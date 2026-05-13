@@ -11,27 +11,11 @@ We switched away from a hand-rolled Apache Kafka deployment only for local devel
 From the repo root:
 
 ```powershell
-.\scripts\reset-phase-2-2-redpanda.ps1
-
-docker build -f services/observation-service/Dockerfile -t cascade-observation-service:dev .
-docker build -f services/stream-enricher/Dockerfile -t cascade-stream-enricher:dev .
-
-kind load docker-image cascade-observation-service:dev --name cascade
-kind load docker-image cascade-stream-enricher:dev --name cascade
-
-kubectl apply -f infra/kubernetes/redpanda/deployment.yaml
-kubectl apply -f infra/kubernetes/redpanda/service.yaml
-kubectl rollout status deployment/redpanda -n cascade-system
-
-kubectl apply -f infra/kubernetes/redpanda/topics-job.yaml
-
-kubectl apply -f infra/kubernetes/observation-service/
-kubectl apply -f infra/kubernetes/stream-enricher/
-
-.\scripts\accept-phase-2-2.ps1
+.\scripts\deploy-phase-2.ps1
+.\scripts\accept-phase-2.ps1
 ```
 
-If the kind cluster was recreated, rebuild and `kind load` both service images before applying the service deployments.
+If the kind cluster was recreated, `deploy-phase-2.ps1` rebuilds and `kind load`s the Phase 2 service images before applying the deployments.
 
 ## Verify
 

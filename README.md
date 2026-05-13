@@ -14,6 +14,140 @@ Phase 2 status: Redpanda-powered Kafka-compatible event backbone, observation pi
 
 See `docs/phase-2.md` for architecture, services, topics, and acceptance details.
 
+## Remaining Roadmap
+
+### Phase 3 — Storage + Memory Layer
+
+Goal: persist and search what Cascade observes.
+
+Adds:
+
+- ClickHouse for telemetry/time-series analytics
+- Qdrant vector DB for semantic memory
+- event archival from Redpanda topics
+- incident history storage
+- similarity search for past incidents
+
+Outcome:
+Cascade can remember past failures and retrieve similar incidents.
+
+### Phase 4 — ML Anomaly Detection
+
+Goal: move from rule-based signals to actual anomaly detection.
+
+Adds:
+
+- anomaly detection service
+- feature extraction from enriched telemetry
+- baseline models such as Isolation Forest, rolling z-score, and threshold models
+- later sequence or graph-based anomaly scoring
+
+Outcome:
+Cascade detects abnormal service behavior automatically.
+
+### Phase 5 — RAG + Knowledge Layer
+
+Goal: let Cascade reason with documentation and historical incidents.
+
+Adds:
+
+- runbook ingestion
+- incident report ingestion
+- topology documentation ingestion
+- vector embeddings
+- retrieval service
+- source-grounded explanations
+
+Outcome:
+Cascade can retrieve relevant operational knowledge and past incidents.
+
+### Phase 6 — LangChain/LangGraph Agent Runtime
+
+Goal: add the custom agentic AI investigation layer.
+
+Adds:
+
+- LangGraph supervisor agent
+- telemetry analyst agent
+- incident investigator agent
+- topology analyst agent
+- remediation planner agent
+- verifier/critic agent
+- tool calls into telemetry, topology, anomaly, vector, and incident services
+
+Outcome:
+Cascade becomes an AI incident investigator instead of only a telemetry pipeline.
+
+### Phase 7 — Chaos Engineering Automation
+
+Goal: close the loop with controlled failure injection.
+
+Adds:
+
+- Chaos Mesh integration service
+- experiment planner
+- blast-radius controls
+- safe experiment execution
+- chaos result scoring
+- resilience score per service
+
+Outcome:
+Cascade can inject faults, observe impact, reconstruct causes, and score resilience.
+
+### Phase 8 — Remediation + Human Approval
+
+Goal: generate safe evidence-backed remediation plans.
+
+Adds:
+
+- remediation recommendation service
+- rollback/runbook generator
+- confidence scoring
+- human approval workflow
+- suggested kubectl/infra actions
+- gated execution model
+
+Outcome:
+Cascade recommends what to do next with evidence and guardrails.
+
+### Phase 9 — UI / Command Center
+
+Goal: make Cascade visually demoable and operationally usable.
+
+Adds:
+
+- Next.js dashboard
+- service topology graph
+- live telemetry panels
+- event stream viewer
+- incident timeline
+- agent reasoning trace
+- chaos experiment console
+- similar incidents panel
+- remediation approval panel
+
+Outcome:
+Cascade becomes a real operations console for distributed failure intelligence.
+
+### Phase 10 — Production Hardening + Final Polish
+
+Goal: make Cascade portfolio/interview-ready.
+
+Adds:
+
+- auth/basic RBAC
+- improved docs
+- architecture diagrams
+- one-command demo
+- GitHub Actions CI
+- screenshots/GIFs/video
+- final README polish
+- resume bullet points
+- demo scenarios such as pod kill, service latency, retry storm, and degraded dependency
+
+Outcome:
+Cascade becomes a Kubernetes-native chaos, observability, and AI incident intelligence platform.
+
 ### Distributed Systems Reliability & Chaos Intelligence Platform
 
 ## Overview
