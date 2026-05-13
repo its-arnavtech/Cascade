@@ -1,5 +1,19 @@
 # CASCADE
 
+Current project phase: Phase 2, the deterministic telemetry and incident reconstruction layer.
+
+Phase 2 status: Redpanda-powered Kafka-compatible event backbone, observation pipeline, experiment tracking, topology, causal reconstruction, and incident report generation are implemented for local kind.
+
+## Phase 2 Quickstart
+
+```powershell
+.\scripts\deploy-phase-2.ps1
+.\scripts\accept-phase-2.ps1
+.\scripts\demo-phase-2.ps1
+```
+
+See `docs/phase-2.md` for architecture, services, topics, and acceptance details.
+
 ### Distributed Systems Reliability & Chaos Intelligence Platform
 
 ## Overview

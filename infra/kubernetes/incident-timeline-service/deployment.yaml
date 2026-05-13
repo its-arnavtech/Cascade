@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-timeline-service
+  namespace: cascade-system
+  labels:
+    app: incident-timeline-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: incident-timeline-service
+  template:
+    metadata:
+      labels:
+        app: incident-timeline-service
+    spec:
+      containers:
+        - name: incident-timeline-service
+          image: cascade-incident-timeline-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8006
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20

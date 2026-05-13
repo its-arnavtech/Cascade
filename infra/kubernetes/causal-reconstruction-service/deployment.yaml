@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: causal-reconstruction-service
+  namespace: cascade-system
+  labels:
+    app: causal-reconstruction-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: causal-reconstruction-service
+  template:
+    metadata:
+      labels:
+        app: causal-reconstruction-service
+    spec:
+      containers:
+        - name: causal-reconstruction-service
+          image: cascade-causal-reconstruction-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8005
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: EXPERIMENT_TOPIC
+              value: experiments.events
+            - name: ENRICHED_TOPIC
+              value: telemetry.enriched
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20

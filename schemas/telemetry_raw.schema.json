@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cascade.local/schemas/telemetry_raw.schema.json",
+  "title": "Cascade Telemetry Raw Event",
+  "description": "Raw pod/service telemetry event produced by observation-service from normalized Prometheus snapshots.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "timestamp",
+    "namespace",
+    "pod_name",
+    "service_name",
+    "cpu",
+    "memory",
+    "restart_count",
+    "pod_phase",
+    "source"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "namespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pod_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "service_name": {
+      "type": ["string", "null"]
+    },
+    "cpu": {
+      "type": ["number", "null"],
+      "description": "CPU usage in cores."
+    },
+    "memory": {
+      "type": ["number", "null"],
+      "description": "Memory working set in bytes."
+    },
+    "restart_count": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "pod_phase": {
+      "type": ["string", "null"]
+    },
+    "source": {
+      "type": "string",
+      "const": "observation-service"
+    }
+  }
+}

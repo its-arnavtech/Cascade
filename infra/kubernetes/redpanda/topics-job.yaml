@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-topics-init
+  namespace: cascade-system
+  labels:
+    app: redpanda-topics-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: redpanda-topics-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topics-init
+          image: redpandadata/redpanda:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDPANDA_BROKERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              until rpk -X brokers="${REDPANDA_BROKERS}" cluster info >/dev/null 2>&1; do
+                echo "Waiting for Redpanda Kafka API at ${REDPANDA_BROKERS}..."
+                sleep 5
+              done
+
+              for topic in telemetry.raw telemetry.enriched experiments.events; do
+                rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" || true
+              done
+
+              rpk -X brokers="${REDPANDA_BROKERS}" topic list

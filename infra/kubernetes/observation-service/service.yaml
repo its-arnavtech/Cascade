@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: observation-service
+  namespace: cascade-system
+  labels:
+    app: observation-service
+spec:
+  type: ClusterIP
+  selector:
+    app: observation-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
