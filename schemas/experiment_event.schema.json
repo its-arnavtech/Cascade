@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cascade.local/schemas/experiment_event.schema.json",
+  "title": "Cascade Experiment Event",
+  "description": "Lifecycle event for chaos or resilience experiments.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "experiment_id",
+    "experiment_type",
+    "target_service",
+    "namespace",
+    "started_at",
+    "duration",
+    "chaos_mesh_resource",
+    "status"
+  ],
+  "properties": {
+    "experiment_id": {
+      "type": "string"
+    },
+    "experiment_type": {
+      "type": "string"
+    },
+    "target_service": {
+      "type": "string"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration": {
+      "type": "integer",
+      "description": "Experiment duration in seconds.",
+      "minimum": 0
+    },
+    "chaos_mesh_resource": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["scheduled", "running", "completed", "failed", "cancelled"]
+    }
+  }
+}

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cascade.local/schemas/telemetry_enriched.schema.json",
+  "title": "Cascade Telemetry Enriched Event",
+  "description": "Telemetry event enriched with rule-based anomaly and health metadata.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "timestamp",
+    "namespace",
+    "pod_name",
+    "service_name",
+    "cpu",
+    "memory",
+    "restart_count",
+    "pod_phase",
+    "source",
+    "anomaly_flags",
+    "ingestion_timestamp",
+    "normalized_fields",
+    "derived_status"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "pod_name": {
+      "type": "string"
+    },
+    "service_name": {
+      "type": ["string", "null"]
+    },
+    "cpu": {
+      "type": ["number", "null"]
+    },
+    "memory": {
+      "type": ["number", "null"]
+    },
+    "restart_count": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "pod_phase": {
+      "type": ["string", "null"]
+    },
+    "source": {
+      "type": "string"
+    },
+    "anomaly_flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["high_cpu", "high_memory", "unstable", "degraded"]
+      },
+      "uniqueItems": true
+    },
+    "ingestion_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "normalized_fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu_percent", "memory_mib", "restart_count"],
+      "properties": {
+        "cpu_percent": {
+          "type": ["number", "null"]
+        },
+        "memory_mib": {
+          "type": ["number", "null"]
+        },
+        "restart_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "derived_status": {
+      "type": "string",
+      "enum": ["healthy", "warning", "degraded"]
+    }
+  }
+}

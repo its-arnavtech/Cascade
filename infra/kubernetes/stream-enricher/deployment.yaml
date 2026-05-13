@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-enricher
+  namespace: cascade-system
+  labels:
+    app: stream-enricher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stream-enricher
+  template:
+    metadata:
+      labels:
+        app: stream-enricher
+    spec:
+      containers:
+        - name: stream-enricher
+          image: cascade-stream-enricher:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8001
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: KAFKA_RAW_TOPIC
+              value: telemetry.raw
+            - name: KAFKA_ENRICHED_TOPIC
+              value: telemetry.enriched
+            - name: KAFKA_CONSUMER_GROUP
+              value: stream-enricher
+            - name: HIGH_MEMORY_THRESHOLD_BYTES
+              value: "536870912"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20

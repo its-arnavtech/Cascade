@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: experiment-tracker-service
+  namespace: cascade-system
+  labels:
+    app: experiment-tracker-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: experiment-tracker-service
+  template:
+    metadata:
+      labels:
+        app: experiment-tracker-service
+    spec:
+      containers:
+        - name: experiment-tracker-service
+          image: cascade-experiment-tracker-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8002
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: EXPERIMENT_TOPIC
+              value: experiments.events
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20

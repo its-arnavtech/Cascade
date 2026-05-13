@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: causal-reconstruction-service
+  namespace: cascade-system
+  labels:
+    app: causal-reconstruction-service
+spec:
+  type: ClusterIP
+  selector:
+    app: causal-reconstruction-service
+  ports:
+    - name: http
+      port: 8005
+      targetPort: http
