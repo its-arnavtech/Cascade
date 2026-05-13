@@ -103,6 +103,23 @@ class ClickHouseClient:
         rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.topology_snapshots ORDER BY captured_at DESC LIMIT 1")
         return rows[0] if rows else None
 
+    async def recent_feature_windows(self, limit: int = 20, service: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"service": service})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.telemetry_feature_windows {where} ORDER BY window_end DESC LIMIT {self._limit(limit)}")
+
+    async def recent_anomalies(self, limit: int = 20, service: str | None = None, severity: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"service": service, "severity": severity})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.anomaly_events {where} ORDER BY detected_at DESC LIMIT {self._limit(limit)}")
+
+    async def service_anomalies(self, service: str, limit: int = 50) -> list[dict[str, Any]]:
+        safe = self._quote(service)
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.anomaly_events WHERE service = {safe} ORDER BY detected_at DESC LIMIT {self._limit(limit)}")
+
+    async def anomaly_detail(self, anomaly_id: str) -> dict[str, Any] | None:
+        safe = self._quote(anomaly_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.anomaly_events WHERE anomaly_id = {safe} ORDER BY detected_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
     async def count(self, table: str) -> int:
         text = await self.fetch_text(f"SELECT count() FROM {self.settings.clickhouse_database}.{table}")
         return int(text.strip() or "0")
@@ -234,5 +251,77 @@ CREATE TABLE IF NOT EXISTS {db}.topology_snapshots (
 ) ENGINE = MergeTree
 ORDER BY (captured_at, snapshot_id)
 """,
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.telemetry_feature_windows (
+    window_id String,
+    service String,
+    namespace String,
+    workload String,
+    window_start DateTime64(3),
+    window_end DateTime64(3),
+    extracted_at DateTime64(3),
+    event_count UInt64,
+    unhealthy_count UInt64,
+    healthy_count UInt64,
+    restart_signal_count UInt64,
+    warning_count UInt64,
+    error_count UInt64,
+    experiment_event_count UInt64,
+    incident_context_count UInt64,
+    avg_cpu Float64,
+    max_cpu Float64,
+    avg_memory Float64,
+    max_memory Float64,
+    avg_latency_ms Float64,
+    max_latency_ms Float64,
+    error_rate Float64,
+    restart_rate Float64,
+    unhealthy_rate Float64,
+    feature_vector_json String,
+    source_query_hash String
+) ENGINE = MergeTree
+ORDER BY (service, window_start, window_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.anomaly_events (
+    anomaly_id String,
+    detected_at DateTime64(3),
+    window_id String,
+    service String,
+    namespace String,
+    workload String,
+    window_start DateTime64(3),
+    window_end DateTime64(3),
+    severity String,
+    status String,
+    anomaly_score Float64,
+    risk_score Float64,
+    model_name String,
+    model_version String,
+    detector_type String,
+    is_anomaly UInt8,
+    explanation String,
+    evidence_json String,
+    feature_vector_json String,
+    related_experiment_id String,
+    published_to_redpanda UInt8
+) ENGINE = MergeTree
+ORDER BY (service, detected_at, anomaly_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.model_runs (
+    run_id String,
+    started_at DateTime64(3),
+    completed_at DateTime64(3),
+    model_name String,
+    model_version String,
+    detector_type String,
+    windows_scored UInt64,
+    anomalies_detected UInt64,
+    status String,
+    config_json String,
+    error_message String
+) ENGINE = MergeTree
+ORDER BY (started_at, run_id)
+""",
     ]
-

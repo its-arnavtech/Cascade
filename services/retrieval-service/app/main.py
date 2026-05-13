@@ -157,12 +157,50 @@ async def topology_latest() -> dict[str, Any]:
     return {"snapshot": snapshot}
 
 
+@app.get("/features/recent")
+async def features_recent(limit: int = 20, service: str | None = None) -> dict[str, Any]:
+    rows = await clickhouse.recent_feature_windows(limit, service)
+    return {"features": rows, "count": len(rows)}
+
+
+@app.get("/anomalies/recent")
+async def anomalies_recent(limit: int = 20, service: str | None = None, severity: str | None = None) -> dict[str, Any]:
+    rows = await clickhouse.recent_anomalies(limit, service, severity)
+    return {"anomalies": rows, "count": len(rows)}
+
+
+@app.get("/anomalies/service/{service_name}")
+async def anomalies_service(service_name: str, limit: int = 50) -> dict[str, Any]:
+    rows = await clickhouse.service_anomalies(service_name, limit)
+    return {"service": service_name, "anomalies": rows, "count": len(rows)}
+
+
+@app.get("/anomalies/{anomaly_id}")
+async def anomaly_detail(anomaly_id: str) -> dict[str, Any]:
+    anomaly = await clickhouse.anomaly_detail(anomaly_id)
+    if anomaly is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Anomaly not found")
+    return {"anomaly": anomaly}
+
+
 @app.get("/debug/counts")
 async def debug_counts() -> dict[str, Any]:
-    tables = ["telemetry_events", "experiment_events", "incidents", "incident_reports", "topology_snapshots"]
+    tables = [
+        "telemetry_events",
+        "experiment_events",
+        "incidents",
+        "incident_reports",
+        "topology_snapshots",
+        "telemetry_feature_windows",
+        "anomaly_events",
+        "model_runs",
+    ]
     counts = {}
     for table in tables:
-        counts[table] = await clickhouse.count(table)
+        try:
+            counts[table] = await clickhouse.count(table)
+        except Exception:
+            counts[table] = None
     counts["qdrant_points"] = await qdrant.count()
     return counts
 

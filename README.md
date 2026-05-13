@@ -1,12 +1,14 @@
 # CASCADE
 
-Current project phase: Phase 3, the storage and memory layer.
+Current project phase: Phase 4, the ML anomaly detection layer.
 
 Phase 1 status: complete.
 
 Phase 2 status: complete. Redpanda-powered Kafka-compatible event backbone, observation pipeline, experiment tracking, topology, causal reconstruction, and incident report generation are implemented for local kind.
 
 Phase 3 status: implemented. ClickHouse analytical archival, Qdrant semantic memory, incident/report persistence, topology snapshots, and retrieval-service APIs are implemented for local kind.
+
+Phase 4 status: implemented. Feature extraction, explainable baseline anomaly detection, anomaly storage, Redpanda anomaly publishing, and retrieval anomaly APIs are implemented for local kind.
 
 ## Phase 2 Quickstart
 
@@ -27,6 +29,16 @@ See `docs/phase-2.md` for architecture, services, topics, and acceptance details
 ```
 
 See `docs/phase-3-storage-memory.md` for storage schemas, memory design, retrieval APIs, acceptance, and troubleshooting.
+
+## Phase 4 Quickstart
+
+```powershell
+.\scripts\deploy-phase-4.ps1
+.\scripts\accept-phase-4.ps1
+.\scripts\demo-phase-4.ps1
+```
+
+See `docs/phase-4-anomaly-detection.md` for feature extraction, model design, anomaly schemas, acceptance, and troubleshooting.
 
 ## Phase 3 - Storage + Memory Layer
 
@@ -68,6 +80,33 @@ retrieval-service
 -> ClickHouse + Qdrant
 ```
 
+## Phase 4 - ML Anomaly Detection
+
+Phase 4 moves Cascade from remembering incidents to detecting abnormal service behavior automatically:
+
+- feature extraction from ClickHouse `telemetry_events`
+- service/workload feature windows in `telemetry_feature_windows`
+- rolling z-score detector
+- threshold/rule baseline detector
+- Isolation Forest detector when enough history is available
+- ensemble risk score and severity mapping
+- anomaly persistence in ClickHouse `anomaly_events`
+- detector execution tracking in `model_runs`
+- Redpanda publishing to `anomalies.detected`
+- retrieval-service anomaly APIs
+
+Architecture:
+
+```text
+ClickHouse telemetry_events
+-> feature-extractor-service
+-> telemetry_feature_windows
+-> anomaly-detector-service
+-> anomaly_events
+-> anomalies.detected
+-> retrieval-service anomaly APIs
+```
+
 ## Remaining Roadmap
 
 ### Phase 3 — Storage + Memory Layer
@@ -76,17 +115,7 @@ Status: implemented for local kind. Cascade can persist observed events, store i
 
 ### Phase 4 — ML Anomaly Detection
 
-Goal: move from rule-based signals to actual anomaly detection.
-
-Adds:
-
-- anomaly detection service
-- feature extraction from enriched telemetry
-- baseline models such as Isolation Forest, rolling z-score, and threshold models
-- later sequence or graph-based anomaly scoring
-
-Outcome:
-Cascade detects abnormal service behavior automatically.
+Status: implemented for local kind. Cascade extracts telemetry features, scores them with explainable baseline models, stores anomaly history, and publishes anomaly events.
 
 ### Phase 5 — RAG + Knowledge Layer
 

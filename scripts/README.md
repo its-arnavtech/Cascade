@@ -35,6 +35,24 @@ Use these after Phase 2 is available:
 
 `PHASE 3 ACCEPTANCE: PASS` means real Phase 2 data flowed into ClickHouse and Qdrant, incident/report persistence works, and retrieval-service can query stored telemetry, experiments, incidents, topology, and similar memories.
 
+## Normal Phase 4 Workflow
+
+Use these after Phase 3 is available:
+
+```powershell
+.\scripts\deploy-phase-4.ps1
+.\scripts\accept-phase-4.ps1
+.\scripts\demo-phase-4.ps1
+```
+
+- `deploy-phase-4.ps1`: deploys the Phase 4 anomaly layer. By default it refreshes Phase 3, then builds and loads `feature-extractor-service`, `anomaly-detector-service`, and the updated `retrieval-service`, creates Phase 4 ClickHouse tables, ensures `anomalies.detected`, and waits for rollouts.
+- `accept-phase-4.ps1`: final Phase 4 acceptance gate. It verifies Phase 3 readiness, Phase 4 schema, feature extraction, model status, anomaly detection, anomaly publishing, and retrieval anomaly APIs.
+- `demo-phase-4.ps1`: demonstrates feature extraction, model status, anomaly detection, recent anomalies, and retrieval APIs. Use `-Synthetic` for a clearly labeled synthetic local anomaly demonstration.
+- `reset-phase-4.ps1`: removes and redeploys only Phase 4 services. It does not delete Phase 1/2/3 infrastructure. Use `-ClearPhase4Tables` only when intentionally truncating Phase 4 ClickHouse tables.
+- `debug-phase-4.ps1`: non-destructive diagnostics for Phase 4 service state, logs, ClickHouse counts, feature windows, anomaly rows, model runs, and health endpoints.
+
+`PHASE 4 ACCEPTANCE: PASS` means real telemetry was transformed into feature windows, detector services scored those windows, a labeled anomaly path produced stored anomaly rows, `anomalies.detected` received valid JSON, and retrieval-service exposes Phase 4 query APIs.
+
 ## Legacy And Recovery Scripts
 
 These are intentionally kept because they are useful when the local kind cluster needs recovery or focused regression checks:
@@ -45,6 +63,7 @@ These are intentionally kept because they are useful when the local kind cluster
 - `debug-phase-2-2.ps1`: focused Redpanda, observation-service, and stream-enricher diagnostics for broker/topic/connectivity failures.
 - `test-observation-service.ps1`: narrow observation-service endpoint smoke test referenced by the observation-service README.
 - `debug-phase-3.ps1`: current Phase 3 diagnostics; prefer this for storage or memory issues.
+- `debug-phase-4.ps1`: current Phase 4 diagnostics; prefer this for feature extraction or anomaly detection issues.
 
 ## Removed Obsolete Scripts
 
@@ -55,3 +74,4 @@ The old Apache Kafka-only helper scripts and the Phase 2.2-only acceptance gate 
 - Redpanda or topic failures: run `.\scripts\debug-phase-2-2.ps1`.
 - Phase 2.1 regression: run `.\scripts\accept-phase-2-1.ps1`.
 - Broken local cluster state: run `.\scripts\reset-to-phase-2-1.ps1`, then redeploy with `.\scripts\deploy-phase-2.ps1`.
+- Phase 4 anomaly issue: run `.\scripts\debug-phase-4.ps1`.

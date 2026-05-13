@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-extractor-service
+  namespace: cascade-system
+  labels:
+    app: feature-extractor-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feature-extractor-service
+  template:
+    metadata:
+      labels:
+        app: feature-extractor-service
+    spec:
+      containers:
+        - name: feature-extractor-service
+          image: cascade-feature-extractor-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8013
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: FEATURE_WINDOW_SECONDS
+              value: "300"
+            - name: FEATURE_LOOKBACK_MINUTES
+              value: "30"
+            - name: FEATURE_BACKGROUND_ENABLED
+              value: "false"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+

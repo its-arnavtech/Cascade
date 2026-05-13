@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cascade Phase 4 Anomaly Detected Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_type",
+    "anomaly_id",
+    "detected_at",
+    "service",
+    "namespace",
+    "workload",
+    "window_start",
+    "window_end",
+    "severity",
+    "risk_score",
+    "anomaly_score",
+    "models",
+    "explanation",
+    "feature_vector"
+  ],
+  "properties": {
+    "schema_version": { "const": "phase4.v1" },
+    "event_type": { "const": "anomaly.detected" },
+    "anomaly_id": { "type": "string" },
+    "detected_at": { "type": "string" },
+    "service": { "type": "string" },
+    "namespace": { "type": "string" },
+    "workload": { "type": "string" },
+    "window_start": { "type": "string" },
+    "window_end": { "type": "string" },
+    "severity": { "enum": ["normal", "low", "medium", "high", "critical"] },
+    "risk_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "anomaly_score": { "type": "number" },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["model_name", "is_anomaly", "score", "evidence"],
+        "properties": {
+          "model_name": { "type": "string" },
+          "is_anomaly": { "type": "boolean" },
+          "score": { "type": "number" },
+          "evidence": { "type": "object" }
+        }
+      }
+    },
+    "explanation": { "type": "string" },
+    "feature_vector": { "type": "object" },
+    "related_experiment_id": { "type": ["string", "null"] }
+  }
+}
