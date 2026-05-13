@@ -17,6 +17,24 @@ Use these for normal development and demos:
 
 `PHASE 2 ACCEPTANCE: PASS` means Phase 2.1 still works, Redpanda is running as the Kafka-compatible broker, `telemetry.raw`, `telemetry.enriched`, and `experiments.events` all flow, and the experiment tracker, topology, causal reconstruction, and incident timeline services can generate a deterministic incident report.
 
+## Normal Phase 3 Workflow
+
+Use these after Phase 2 is available:
+
+```powershell
+.\scripts\deploy-phase-3.ps1
+.\scripts\accept-phase-3.ps1
+.\scripts\demo-phase-3.ps1
+```
+
+- `deploy-phase-3.ps1`: deploys the Phase 3 storage and memory layer. By default it first refreshes Phase 2, then builds and loads `telemetry-archiver`, `memory-indexer`, and `retrieval-service`, deploys ClickHouse and Qdrant, runs idempotent init jobs, and waits for rollouts.
+- `accept-phase-3.ps1`: final Phase 3 acceptance gate. It verifies Phase 2 readiness, ClickHouse tables, Qdrant collection, real telemetry and experiment archival, incident/report persistence, memory indexing, and retrieval-service APIs.
+- `demo-phase-3.ps1`: demonstrates storage and memory end to end by creating an experiment, persisting an incident/report, printing row and point counts, querying recent history, and running similar incident memory search.
+- `reset-phase-3.ps1`: deletes and recreates only Phase 3 resources. It does not delete Online Boutique, Redpanda, or Phase 2 services. Use `-KeepData` to keep ClickHouse and Qdrant deployments.
+- `debug-phase-3.ps1`: non-destructive diagnostics for Phase 3 resources, logs, Redpanda topics, ClickHouse counts, Qdrant collection state, and retrieval-service health.
+
+`PHASE 3 ACCEPTANCE: PASS` means real Phase 2 data flowed into ClickHouse and Qdrant, incident/report persistence works, and retrieval-service can query stored telemetry, experiments, incidents, topology, and similar memories.
+
 ## Legacy And Recovery Scripts
 
 These are intentionally kept because they are useful when the local kind cluster needs recovery or focused regression checks:
@@ -26,6 +44,7 @@ These are intentionally kept because they are useful when the local kind cluster
 - `reset-phase-2-2-redpanda.ps1`: removes active Redpanda and stream-enricher resources while keeping source files intact, useful before a clean Redpanda redeploy.
 - `debug-phase-2-2.ps1`: focused Redpanda, observation-service, and stream-enricher diagnostics for broker/topic/connectivity failures.
 - `test-observation-service.ps1`: narrow observation-service endpoint smoke test referenced by the observation-service README.
+- `debug-phase-3.ps1`: current Phase 3 diagnostics; prefer this for storage or memory issues.
 
 ## Removed Obsolete Scripts
 

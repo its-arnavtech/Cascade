@@ -1,0 +1,97 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-schema-init
+  namespace: cascade-system
+  labels:
+    app: clickhouse-schema-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: clickhouse-schema-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: clickhouse/clickhouse-server:24.8
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -lc
+          args:
+            - |
+              set -euo pipefail
+              until clickhouse-client --host clickhouse --query "SELECT 1"; do sleep 3; done
+              clickhouse-client --host clickhouse --multiquery <<'SQL'
+              CREATE DATABASE IF NOT EXISTS cascade;
+              CREATE TABLE IF NOT EXISTS cascade.telemetry_events (
+                  event_id String,
+                  observed_at DateTime64(3),
+                  ingested_at DateTime64(3),
+                  source_topic String,
+                  event_type String,
+                  namespace String,
+                  service String,
+                  workload String,
+                  pod String,
+                  severity String,
+                  health_status String,
+                  experiment_id String,
+                  trace_id String,
+                  raw_json String,
+                  enriched_json String,
+                  labels_json String,
+                  numeric_features_json String
+              ) ENGINE = MergeTree ORDER BY (service, observed_at, event_id);
+              CREATE TABLE IF NOT EXISTS cascade.experiment_events (
+                  event_id String,
+                  experiment_id String,
+                  experiment_type String,
+                  target_namespace String,
+                  target_service String,
+                  target_workload String,
+                  status String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  observed_at DateTime64(3),
+                  ingested_at DateTime64(3),
+                  source_topic String,
+                  event_json String
+              ) ENGINE = MergeTree ORDER BY (experiment_id, observed_at, event_id);
+              CREATE TABLE IF NOT EXISTS cascade.incidents (
+                  incident_id String,
+                  experiment_id String,
+                  root_cause_service String,
+                  root_cause_summary String,
+                  severity String,
+                  status String,
+                  confidence Float64,
+                  first_seen_at DateTime64(3),
+                  last_seen_at DateTime64(3),
+                  created_at DateTime64(3),
+                  affected_services_json String,
+                  causal_chain_json String,
+                  evidence_json String,
+                  incident_json String
+              ) ENGINE = MergeTree ORDER BY (root_cause_service, first_seen_at, incident_id);
+              CREATE TABLE IF NOT EXISTS cascade.incident_reports (
+                  report_id String,
+                  incident_id String,
+                  experiment_id String,
+                  generated_at DateTime64(3),
+                  root_cause_service String,
+                  severity String,
+                  markdown_report String,
+                  report_json String
+              ) ENGINE = MergeTree ORDER BY (root_cause_service, generated_at, report_id);
+              CREATE TABLE IF NOT EXISTS cascade.topology_snapshots (
+                  snapshot_id String,
+                  captured_at DateTime64(3),
+                  topology_json String,
+                  service_count UInt64,
+                  edge_count UInt64
+              ) ENGINE = MergeTree ORDER BY (captured_at, snapshot_id);
+              SQL
+

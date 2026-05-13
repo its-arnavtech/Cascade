@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qdrant-collection-init
+  namespace: cascade-system
+  labels:
+    app: qdrant-collection-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: qdrant-collection-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: curlimages/curl:8.11.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              set -eu
+              until curl -sf http://qdrant:6333/readyz; do sleep 3; done
+              code="$(curl -s -o /tmp/qdrant-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_incident_memory \
+                -H 'Content-Type: application/json' \
+                --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
+              if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
+                cat /tmp/qdrant-init-response
+                exit 0
+              fi
+              cat /tmp/qdrant-init-response
+              exit 1

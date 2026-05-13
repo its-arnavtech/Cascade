@@ -1,8 +1,12 @@
 # CASCADE
 
-Current project phase: Phase 2, the deterministic telemetry and incident reconstruction layer.
+Current project phase: Phase 3, the storage and memory layer.
 
-Phase 2 status: Redpanda-powered Kafka-compatible event backbone, observation pipeline, experiment tracking, topology, causal reconstruction, and incident report generation are implemented for local kind.
+Phase 1 status: complete.
+
+Phase 2 status: complete. Redpanda-powered Kafka-compatible event backbone, observation pipeline, experiment tracking, topology, causal reconstruction, and incident report generation are implemented for local kind.
+
+Phase 3 status: implemented. ClickHouse analytical archival, Qdrant semantic memory, incident/report persistence, topology snapshots, and retrieval-service APIs are implemented for local kind.
 
 ## Phase 2 Quickstart
 
@@ -14,22 +18,61 @@ Phase 2 status: Redpanda-powered Kafka-compatible event backbone, observation pi
 
 See `docs/phase-2.md` for architecture, services, topics, and acceptance details.
 
+## Phase 3 Quickstart
+
+```powershell
+.\scripts\deploy-phase-3.ps1
+.\scripts\accept-phase-3.ps1
+.\scripts\demo-phase-3.ps1
+```
+
+See `docs/phase-3-storage-memory.md` for storage schemas, memory design, retrieval APIs, acceptance, and troubleshooting.
+
+## Phase 3 - Storage + Memory Layer
+
+Phase 3 adds durable storage and memory to the completed Phase 2 incident-intelligence pipeline:
+
+- ClickHouse telemetry, time-series, and event analytics
+- Qdrant vector memory
+- telemetry archival from Redpanda
+- experiment event archival
+- incident and report persistence
+- topology snapshot persistence
+- deterministic semantic memory indexing
+- similarity search for past incidents
+- retrieval-service APIs over ClickHouse and Qdrant
+
+Architecture:
+
+```text
+Prometheus
+-> observation-service
+-> telemetry.raw
+-> Redpanda
+-> stream-enricher
+-> telemetry.enriched
+-> telemetry-archiver
+-> ClickHouse
+
+Chaos Mesh
+-> experiment-tracker-service
+-> experiments.events
+-> telemetry-archiver
+-> ClickHouse
+
+causal-reconstruction-service + incident-timeline-service
+-> retrieval-service incident/report archival
+-> ClickHouse + Qdrant
+
+retrieval-service
+-> ClickHouse + Qdrant
+```
+
 ## Remaining Roadmap
 
 ### Phase 3 — Storage + Memory Layer
 
-Goal: persist and search what Cascade observes.
-
-Adds:
-
-- ClickHouse for telemetry/time-series analytics
-- Qdrant vector DB for semantic memory
-- event archival from Redpanda topics
-- incident history storage
-- similarity search for past incidents
-
-Outcome:
-Cascade can remember past failures and retrieve similar incidents.
+Status: implemented for local kind. Cascade can persist observed events, store incident history, create deterministic semantic memory, and retrieve similar incidents.
 
 ### Phase 4 — ML Anomaly Detection
 
