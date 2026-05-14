@@ -177,7 +177,7 @@ async def index_documents(source: str, source_type: str, docs: list[Any], config
                     chunk_rows.append(_chunk_row(chunk, started, point_id))
                 point_count += 1
         inserted_docs = await clickhouse.insert_knowledge_documents(doc_rows)
-        inserted_chunks = await clickhouse.insert_knowledge_chunks(chunk_rows)
+        await clickhouse.insert_knowledge_chunks(chunk_rows)
         result = {"status": "success", "run_id": run_id, "source": source, "documents_seen": len(docs), "documents_ingested": inserted_docs, "chunks_created": len(chunk_rows), "chunks_indexed": point_count, "latency_ms": round((time.perf_counter() - started_timer) * 1000, 2)}
         await clickhouse.insert_knowledge_ingestion_run(_run_row(run_id, started, source, source_type, result, config, ""))
         last_ingest.update(result, last_error="")

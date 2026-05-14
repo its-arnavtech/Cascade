@@ -186,6 +186,39 @@ class ClickHouseClient:
                 stats[table] = None
         return stats
 
+    async def insert_investigation_run(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("investigation_runs", [row])
+
+    async def insert_agent_step(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("agent_steps", [row])
+
+    async def insert_agent_tool_call(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("agent_tool_calls", [row])
+
+    async def insert_investigation_report(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("investigation_reports", [row])
+
+    async def recent_investigation_runs(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"service": service, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.investigation_runs {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
+
+    async def investigation_detail(self, investigation_id: str) -> dict[str, Any]:
+        safe = self._quote(investigation_id)
+        runs = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.investigation_runs WHERE investigation_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        steps = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.agent_steps WHERE investigation_id = {safe} ORDER BY created_at ASC LIMIT 200")
+        reports = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.investigation_reports WHERE investigation_id = {safe} ORDER BY generated_at DESC LIMIT 1")
+        calls = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.agent_tool_calls WHERE investigation_id = {safe} ORDER BY called_at ASC LIMIT 200")
+        return {"run": runs[0] if runs else None, "steps": steps, "tool_calls": calls, "report": reports[0] if reports else None}
+
+    async def agent_stats(self) -> dict[str, int | None]:
+        stats: dict[str, int | None] = {}
+        for table in ["investigation_runs", "agent_steps", "investigation_reports", "agent_tool_calls"]:
+            try:
+                stats[table] = await self.count(table)
+            except Exception:
+                stats[table] = None
+        return stats
+
     @staticmethod
     def json_dumps(value: Any) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -465,5 +498,83 @@ CREATE TABLE IF NOT EXISTS {db}.knowledge_queries (
     response_json String
 ) ENGINE = MergeTree
 ORDER BY (queried_at, query_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.investigation_runs (
+    investigation_id String,
+    created_at DateTime64(3),
+    updated_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    status String,
+    mode String,
+    trigger_type String,
+    trigger_id String,
+    service String,
+    namespace String,
+    severity String,
+    risk_score Float64,
+    title String,
+    objective String,
+    final_summary String,
+    confidence Float64,
+    tools_used_json String,
+    evidence_refs_json String,
+    config_json String,
+    error_message String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (created_at, investigation_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.agent_steps (
+    step_id String,
+    investigation_id String,
+    created_at DateTime64(3),
+    node_name String,
+    agent_role String,
+    step_type String,
+    status String,
+    input_json String,
+    output_json String,
+    tool_name String,
+    tool_latency_ms Float64,
+    error_message String
+) ENGINE = MergeTree
+ORDER BY (investigation_id, created_at, step_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.investigation_reports (
+    report_id String,
+    investigation_id String,
+    generated_at DateTime64(3),
+    title String,
+    summary String,
+    suspected_root_cause String,
+    affected_services_json String,
+    evidence_json String,
+    timeline_json String,
+    anomaly_refs_json String,
+    knowledge_refs_json String,
+    recommended_next_steps_json String,
+    suggested_remediation_json String,
+    confidence Float64,
+    markdown_report String,
+    report_json String
+) ENGINE = ReplacingMergeTree(generated_at)
+ORDER BY (investigation_id, generated_at, report_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.agent_tool_calls (
+    call_id String,
+    investigation_id String,
+    called_at DateTime64(3),
+    tool_name String,
+    target_service String,
+    status String,
+    latency_ms Float64,
+    request_json String,
+    response_summary String,
+    error_message String
+) ENGINE = MergeTree
+ORDER BY (investigation_id, called_at, call_id)
 """,
     ]

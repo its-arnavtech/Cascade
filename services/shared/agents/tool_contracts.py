@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass(frozen=True)
+class ToolContract:
+    name: str
+    description: str
+    target_service: str
+    method: str
+    path_template: str
+    read_only: bool = True
+    timeout_seconds: float = 10.0
+    default_input: dict[str, Any] | None = None
+
+
+TOOL_REGISTRY: dict[str, ToolContract] = {
+    "get_recent_events": ToolContract("get_recent_events", "Fetch recent telemetry events.", "retrieval-service", "GET", "/events/recent"),
+    "get_service_events": ToolContract("get_service_events", "Fetch recent telemetry for one service.", "retrieval-service", "GET", "/events/service/{service}"),
+    "get_recent_feature_windows": ToolContract("get_recent_feature_windows", "Fetch recent feature windows.", "retrieval-service", "GET", "/features/recent"),
+    "get_recent_anomalies": ToolContract("get_recent_anomalies", "Fetch recent anomaly events.", "retrieval-service", "GET", "/anomalies/recent"),
+    "get_anomaly_by_id": ToolContract("get_anomaly_by_id", "Fetch an anomaly by ID.", "retrieval-service", "GET", "/anomalies/{anomaly_id}"),
+    "get_service_anomalies": ToolContract("get_service_anomalies", "Fetch anomalies for one service.", "retrieval-service", "GET", "/anomalies/service/{service}"),
+    "get_recent_incidents": ToolContract("get_recent_incidents", "Fetch recent incidents.", "retrieval-service", "GET", "/incidents/recent"),
+    "get_incident_by_id": ToolContract("get_incident_by_id", "Fetch incident detail and reports.", "retrieval-service", "GET", "/incidents/{incident_id}"),
+    "search_knowledge": ToolContract("search_knowledge", "Search source-grounded knowledge.", "knowledge-retrieval-service", "POST", "/knowledge/search"),
+    "build_knowledge_context": ToolContract("build_knowledge_context", "Build source-grounded context pack.", "knowledge-retrieval-service", "POST", "/knowledge/context"),
+    "get_topology": ToolContract("get_topology", "Fetch service dependency topology.", "topology-service", "GET", "/topology"),
+    "get_upstream_services": ToolContract("get_upstream_services", "Fetch upstream services.", "topology-service", "GET", "/topology/{service}/upstream"),
+    "get_downstream_services": ToolContract("get_downstream_services", "Fetch downstream services.", "topology-service", "GET", "/topology/{service}/downstream"),
+    "get_service_impact": ToolContract("get_service_impact", "Estimate topology blast radius.", "topology-service", "POST", "/topology/impact"),
+    "search_similar_incidents": ToolContract("search_similar_incidents", "Search incident memory.", "retrieval-service", "POST", "/memory/search"),
+    "generate_incident_timeline": ToolContract("generate_incident_timeline", "Generate incident timeline template.", "incident-timeline-service", "POST", "/timeline"),
+    "generate_investigation_report_template": ToolContract("generate_investigation_report_template", "Generate incident report template.", "incident-timeline-service", "POST", "/report"),
+    "get_debug_counts": ToolContract("get_debug_counts", "Fetch debug row and point counts.", "retrieval-service", "GET", "/debug/counts"),
+}
+
+
+MUTATING_TOOL_NAMES = {"restart_deployment", "scale_deployment", "delete_pod", "apply_chaos", "patch_resource", "execute_remediation"}

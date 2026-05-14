@@ -223,4 +223,72 @@ spec:
                   latency_ms Float64,
                   response_json String
               ) ENGINE = MergeTree ORDER BY (queried_at, query_id);
+              CREATE TABLE IF NOT EXISTS cascade.investigation_runs (
+                  investigation_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  mode String,
+                  trigger_type String,
+                  trigger_id String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  risk_score Float64,
+                  title String,
+                  objective String,
+                  final_summary String,
+                  confidence Float64,
+                  tools_used_json String,
+                  evidence_refs_json String,
+                  config_json String,
+                  error_message String
+              ) ENGINE = ReplacingMergeTree(updated_at)
+              ORDER BY (created_at, investigation_id);
+              CREATE TABLE IF NOT EXISTS cascade.agent_steps (
+                  step_id String,
+                  investigation_id String,
+                  created_at DateTime64(3),
+                  node_name String,
+                  agent_role String,
+                  step_type String,
+                  status String,
+                  input_json String,
+                  output_json String,
+                  tool_name String,
+                  tool_latency_ms Float64,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (investigation_id, created_at, step_id);
+              CREATE TABLE IF NOT EXISTS cascade.investigation_reports (
+                  report_id String,
+                  investigation_id String,
+                  generated_at DateTime64(3),
+                  title String,
+                  summary String,
+                  suspected_root_cause String,
+                  affected_services_json String,
+                  evidence_json String,
+                  timeline_json String,
+                  anomaly_refs_json String,
+                  knowledge_refs_json String,
+                  recommended_next_steps_json String,
+                  suggested_remediation_json String,
+                  confidence Float64,
+                  markdown_report String,
+                  report_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (investigation_id, generated_at, report_id);
+              CREATE TABLE IF NOT EXISTS cascade.agent_tool_calls (
+                  call_id String,
+                  investigation_id String,
+                  called_at DateTime64(3),
+                  tool_name String,
+                  target_service String,
+                  status String,
+                  latency_ms Float64,
+                  request_json String,
+                  response_summary String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (investigation_id, called_at, call_id);
               SQL

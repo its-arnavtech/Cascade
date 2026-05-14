@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-tool-gateway
+  namespace: cascade-system
+  labels:
+    app: agent-tool-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-tool-gateway
+  template:
+    metadata:
+      labels:
+        app: agent-tool-gateway
+    spec:
+      containers:
+        - name: agent-tool-gateway
+          image: cascade-agent-tool-gateway:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8017
+          env:
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: KNOWLEDGE_RETRIEVAL_SERVICE_URL
+              value: http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016
+            - name: TOPOLOGY_SERVICE_URL
+              value: http://topology-service.cascade-system.svc.cluster.local:8004
+            - name: CAUSAL_RECONSTRUCTION_SERVICE_URL
+              value: http://causal-reconstruction-service.cascade-system.svc.cluster.local:8005
+            - name: INCIDENT_TIMELINE_SERVICE_URL
+              value: http://incident-timeline-service.cascade-system.svc.cluster.local:8006
+            - name: ANOMALY_DETECTOR_SERVICE_URL
+              value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

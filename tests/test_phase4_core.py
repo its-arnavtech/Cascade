@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from services.shared.anomaly.ensemble import severity_for_risk
 from services.shared.anomaly.isolation_forest import isolation_forest_detect

@@ -74,6 +74,27 @@ Use these after Phase 4 is available:
 
 `PHASE 5 ACCEPTANCE: PASS` means operational docs, incident reports, anomaly events, and topology snapshots can be ingested into ClickHouse/Qdrant and retrieved as source-grounded evidence with citations and context packs.
 
+## Normal Phase 6 Workflow
+
+Use these after Phase 5 is available:
+
+```powershell
+.\scripts\deploy-phase-6.ps1
+.\scripts\accept-phase-6.ps1
+.\scripts\demo-phase-6.ps1
+.\scripts\debug-phase-6.ps1
+```
+
+- `deploy-phase-6.ps1`: deploys the Phase 6 agent runtime. By default it refreshes Phase 5, builds and loads `agent-tool-gateway` and `agent-orchestrator-service`, applies Phase 6 ClickHouse schema and Redpanda topic initialization, deploys services, and waits for rollouts.
+- `accept-phase-6.ps1`: final Phase 6 acceptance gate. It verifies Phase 5 baseline readiness, Phase 6 schema, `agent.investigations`, tool registry, representative tool calls, deterministic investigations, persisted run/step/tool/report rows, and text-only remediation boundaries.
+- `demo-phase-6.ps1`: demonstrates the tool registry, deterministic agent status, evidence collection, tool-call trace, and final investigation report.
+- `reset-phase-6.ps1`: removes and redeploys only Phase 6 services. It does not delete Phase 1/2/3/4/5 infrastructure. Use `-ClearPhase6Tables` only when intentionally truncating Phase 6 ClickHouse tables.
+- `debug-phase-6.ps1`: non-destructive diagnostics for Phase 6 service state, logs, Redpanda topics, ClickHouse counts, health endpoints, tool registry, agent status, and recent investigations.
+
+Phase 6 runs in deterministic local mode by default and does not require paid APIs, hosted LLMs, GPUs, or cloud services. Optional LangGraph/LLM configuration is documented in `docs/phase-6-agent-runtime.md`, but acceptance does not depend on it.
+
+`PHASE 6 ACCEPTANCE: PASS` means the read-only tool gateway works, the deterministic investigation graph runs, evidence-backed reports are persisted, lifecycle events are available through `agent.investigations`, and suggested remediation remains text-only.
+
 ## Legacy And Recovery Scripts
 
 These are intentionally kept because they are useful when the local kind cluster needs recovery or focused regression checks:
@@ -86,20 +107,22 @@ These are intentionally kept because they are useful when the local kind cluster
 - `debug-phase-3.ps1`: current Phase 3 diagnostics; prefer this for storage or memory issues.
 - `debug-phase-4.ps1`: current Phase 4 diagnostics; prefer this for feature extraction or anomaly detection issues.
 - `debug-phase-5.ps1`: current Phase 5 diagnostics; prefer this for knowledge ingestion or retrieval issues.
+- `debug-phase-6.ps1`: current Phase 6 diagnostics; prefer this for agent runtime or tool gateway issues.
 
 ## Removed Obsolete Scripts And Docs
 
 No active Phase 2-5 workflow scripts were removed in the pre-Phase-6 cleanup. One stale root planning note was removed because it had obsolete phase ordering, encoding artifacts, and no current references.
 
-## Pre-Phase-6 Hygiene
+## Pre-Phase-7 Hygiene
 
-Before beginning Phase 6, run the current acceptance gates in order:
+Before beginning Phase 7, run the current acceptance gates in order:
 
 ```powershell
 .\scripts\accept-phase-2.ps1
 .\scripts\accept-phase-3.ps1
 .\scripts\accept-phase-4.ps1
 .\scripts\accept-phase-5.ps1
+.\scripts\accept-phase-6.ps1
 ```
 
 Local `.env` files, kubeconfigs, debug outputs, database volumes, generated reports, and model artifacts are intentionally ignored by the root `.gitignore`. Use `.env.example` for safe placeholder configuration only.
@@ -111,3 +134,4 @@ Local `.env` files, kubeconfigs, debug outputs, database volumes, generated repo
 - Broken local cluster state: run `.\scripts\reset-to-phase-2-1.ps1`, then redeploy with `.\scripts\deploy-phase-2.ps1`.
 - Phase 4 anomaly issue: run `.\scripts\debug-phase-4.ps1`.
 - Phase 5 knowledge issue: run `.\scripts\debug-phase-5.ps1`.
+- Phase 6 agent runtime issue: run `.\scripts\debug-phase-6.ps1`.

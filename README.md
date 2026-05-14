@@ -1,6 +1,6 @@
 # CASCADE
 
-Current project phase: Phase 5, the RAG + knowledge layer.
+Current project phase: Phase 6, the agent runtime.
 
 Phase 1 status: complete.
 
@@ -10,7 +10,9 @@ Phase 3 status: complete. ClickHouse analytical archival, Qdrant semantic memory
 
 Phase 4 status: complete. Feature extraction, explainable baseline anomaly detection, anomaly storage, Redpanda anomaly publishing, and retrieval anomaly APIs are implemented for local kind.
 
-Phase 5 status: implemented. Runbook/document ingestion, incident report ingestion, anomaly knowledge ingestion, topology knowledge ingestion, deterministic embeddings, ClickHouse knowledge metadata, Qdrant knowledge vectors, source-grounded search, context pack assembly, and retrieval-service knowledge APIs are implemented for local kind.
+Phase 5 status: complete. Runbook/document ingestion, incident report ingestion, anomaly knowledge ingestion, topology knowledge ingestion, deterministic embeddings, ClickHouse knowledge metadata, Qdrant knowledge vectors, source-grounded search, context pack assembly, and retrieval-service knowledge APIs are implemented for local kind.
+
+Phase 6 status: implemented. Read-only agent tool gateway, deterministic local investigation graph, evidence-backed report generation, investigation persistence, agent step/tool-call traceability, optional LangGraph/LLM hooks, and compact investigation lifecycle events are implemented for local kind.
 
 ## Phase 2 Quickstart
 
@@ -51,6 +53,16 @@ See `docs/phase-4-anomaly-detection.md` for feature extraction, model design, an
 ```
 
 See `docs/phase-5-rag-knowledge-layer.md` for knowledge ingestion, retrieval APIs, context pack format, acceptance, and troubleshooting.
+
+## Phase 6 Quickstart
+
+```powershell
+.\scripts\deploy-phase-6.ps1
+.\scripts\accept-phase-6.ps1
+.\scripts\demo-phase-6.ps1
+```
+
+See `docs/phase-6-agent-runtime.md` for the tool gateway, investigation graph, deterministic mode, APIs, safety boundaries, acceptance, and troubleshooting.
 
 ## Phase 3 - Storage + Memory Layer
 
@@ -133,6 +145,27 @@ docs/runbooks/incidents/anomalies/topology
 -> retrieval-service knowledge APIs
 ```
 
+## Phase 6 - LangChain/LangGraph Agent Runtime
+
+Phase 6 lets Cascade investigate incidents and anomalies by calling real platform tools and assembling evidence-backed reports. It runs without paid APIs by default.
+
+- `agent-tool-gateway` wraps existing Cascade APIs as read-only tools.
+- `agent-orchestrator-service` runs graph-style investigation workflows.
+- deterministic local planner mode is the default acceptance/demo mode.
+- optional LangGraph/LLM configuration hooks are present but not required.
+- ClickHouse stores `investigation_runs`, `agent_steps`, `agent_tool_calls`, and `investigation_reports`.
+- Redpanda topic `agent.investigations` stores compact lifecycle events.
+- reports include evidence refs, confidence, limitations, recommended next investigation steps, and text-only remediation suggestions.
+- Phase 6 does not execute remediation, mutate Kubernetes resources, run chaos experiments, or provide a UI.
+
+```text
+anomaly_events / incidents / telemetry / topology / knowledge
+-> agent-tool-gateway
+-> agent-orchestrator-service
+-> investigation_runs / agent_steps / investigation_reports
+-> agent.investigations
+```
+
 ## Current Stack
 
 - Docker Desktop
@@ -159,12 +192,6 @@ docs/runbooks/incidents/anomalies/topology
 - Do not commit local Kubernetes configs, ClickHouse/Qdrant/Redpanda data directories, or exported telemetry/incident dumps.
 
 ## Remaining Roadmap
-
-### Phase 6 - LangChain/LangGraph Agent Runtime
-
-Goal: add the custom agentic AI investigation layer.
-
-Adds supervisor, telemetry analyst, incident investigator, topology analyst, remediation planner, and verifier/critic agents with tool calls into telemetry, topology, anomaly, vector, incident, and knowledge services.
 
 ### Phase 7 - Chaos Engineering Automation
 

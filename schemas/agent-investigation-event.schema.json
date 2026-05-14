@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cascade Agent Investigation Event",
+  "type": "object",
+  "required": ["schema_version", "event_type", "investigation_id", "timestamp", "trigger_type", "service", "namespace", "status", "summary", "evidence_refs", "tools_used", "confidence"],
+  "properties": {
+    "schema_version": { "const": "phase6.v1" },
+    "event_type": { "enum": ["investigation.started", "investigation.step.completed", "investigation.completed", "investigation.failed"] },
+    "investigation_id": { "type": "string" },
+    "timestamp": { "type": "string" },
+    "trigger_type": { "type": "string" },
+    "service": { "type": "string" },
+    "namespace": { "type": "string" },
+    "status": { "type": "string" },
+    "summary": { "type": "string" },
+    "evidence_refs": { "type": "array" },
+    "tools_used": { "type": "array", "items": { "type": "string" } },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  },
+  "additionalProperties": true
+}
