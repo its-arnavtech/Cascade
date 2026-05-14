@@ -291,4 +291,95 @@ spec:
                   response_summary String,
                   error_message String
               ) ENGINE = MergeTree ORDER BY (investigation_id, called_at, call_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_experiment_plans (
+                  plan_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  status String,
+                  plan_type String,
+                  experiment_kind String,
+                  target_namespace String,
+                  target_service String,
+                  target_workload String,
+                  target_selector_json String,
+                  duration_seconds UInt64,
+                  blast_radius_score Float64,
+                  safety_score Float64,
+                  risk_level String,
+                  objective String,
+                  hypothesis String,
+                  expected_impact String,
+                  safety_policy_json String,
+                  manifest_json String,
+                  plan_json String
+              ) ENGINE = ReplacingMergeTree(updated_at)
+              ORDER BY (created_at, plan_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_experiment_runs (
+                  run_id String,
+                  plan_id String,
+                  experiment_id String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  dry_run UInt8,
+                  approved UInt8,
+                  experiment_kind String,
+                  target_namespace String,
+                  target_service String,
+                  target_workload String,
+                  chaos_resource_name String,
+                  chaos_resource_uid String,
+                  duration_seconds UInt64,
+                  cleanup_status String,
+                  error_message String,
+                  run_json String
+              ) ENGINE = ReplacingMergeTree(started_at)
+              ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_observations (
+                  observation_id String,
+                  run_id String,
+                  plan_id String,
+                  observed_at DateTime64(3),
+                  observation_window_seconds UInt64,
+                  telemetry_events_count UInt64,
+                  anomaly_events_count UInt64,
+                  incidents_count UInt64,
+                  investigation_id String,
+                  affected_services_json String,
+                  telemetry_summary_json String,
+                  anomaly_summary_json String,
+                  incident_summary_json String,
+                  observation_json String
+              ) ENGINE = MergeTree ORDER BY (run_id, observed_at, observation_id);
+              CREATE TABLE IF NOT EXISTS cascade.resilience_scores (
+                  score_id String,
+                  run_id String,
+                  plan_id String,
+                  computed_at DateTime64(3),
+                  service String,
+                  namespace String,
+                  experiment_kind String,
+                  resilience_score Float64,
+                  recovery_score Float64,
+                  blast_radius_score Float64,
+                  anomaly_penalty Float64,
+                  incident_penalty Float64,
+                  evidence_score Float64,
+                  grade String,
+                  explanation String,
+                  recommendations_json String,
+                  score_json String
+              ) ENGINE = ReplacingMergeTree(computed_at)
+              ORDER BY (service, computed_at, score_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_safety_violations (
+                  violation_id String,
+                  created_at DateTime64(3),
+                  plan_id String,
+                  run_id String,
+                  violation_type String,
+                  severity String,
+                  message String,
+                  policy_json String,
+                  request_json String
+              ) ENGINE = MergeTree ORDER BY (created_at, violation_id);
               SQL

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cascade.local/schemas/chaos-experiment-event.schema.json",
+  "title": "Cascade Phase 7 Chaos Experiment Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_type",
+    "timestamp",
+    "plan_id",
+    "run_id",
+    "experiment_id",
+    "experiment_kind",
+    "target_namespace",
+    "target_service",
+    "status"
+  ],
+  "properties": {
+    "schema_version": { "const": "phase7.v1" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "chaos.plan.created",
+        "chaos.plan.rejected",
+        "chaos.run.started",
+        "chaos.run.completed",
+        "chaos.run.failed",
+        "chaos.run.cleaned_up",
+        "chaos.observation.completed",
+        "chaos.resilience.scored"
+      ]
+    },
+    "timestamp": { "type": "string" },
+    "plan_id": { "type": "string" },
+    "run_id": { "type": "string" },
+    "experiment_id": { "type": "string" },
+    "experiment_kind": { "type": "string" },
+    "target_namespace": { "type": "string" },
+    "target_service": { "type": "string" },
+    "target_workload": { "type": "string" },
+    "dry_run": { "type": "boolean" },
+    "approved": { "type": "boolean" },
+    "status": { "type": "string" },
+    "resilience_score": { "type": "number" },
+    "grade": { "type": "string", "enum": ["", "A", "B", "C", "D", "F"] },
+    "summary": { "type": "string" },
+    "evidence_refs": { "type": "array" }
+  },
+  "additionalProperties": false
+}

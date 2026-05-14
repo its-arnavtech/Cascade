@@ -95,6 +95,41 @@ Phase 6 runs in deterministic local mode by default and does not require paid AP
 
 `PHASE 6 ACCEPTANCE: PASS` means the read-only tool gateway works, the deterministic investigation graph runs, evidence-backed reports are persisted, lifecycle events are available through `agent.investigations`, and suggested remediation remains text-only.
 
+## Normal Phase 7 Workflow
+
+Use these after Phase 6 is available:
+
+```powershell
+.\scripts\deploy-phase-7.ps1
+.\scripts\accept-phase-7.ps1
+.\scripts\demo-phase-7.ps1
+.\scripts\debug-phase-7.ps1
+```
+
+- `deploy-phase-7.ps1`: deploys the Phase 7 chaos automation layer. By default it refreshes Phase 6, verifies Chaos Mesh CRDs, builds and loads `chaos-planner-service`, `chaos-executor-service`, and the updated `agent-tool-gateway`, applies Phase 7 ClickHouse schema and Redpanda topic initialization, deploys RBAC/services, and waits for rollouts.
+- `accept-phase-7.ps1`: final Phase 7 acceptance gate. It verifies Phase 6 readiness, Chaos Mesh CRDs, Phase 7 schema/topic, service readiness, safety rejection, dry-run execution, optional real bounded pod-kill execution, cleanup, observations, resilience scores, and chaos lifecycle events.
+- `demo-phase-7.ps1`: demonstrates safety policy, safe plan creation, safety rejection, dry-run execution, optional real pod-kill execution, observation, resilience scoring, and optional agent investigation.
+- `reset-phase-7.ps1`: cleans up Cascade-managed Chaos Mesh resources and redeploys only Phase 7 services. It does not delete Phase 1/2/3/4/5/6 infrastructure. Use `-ClearPhase7Tables` only when intentionally truncating Phase 7 ClickHouse tables.
+- `debug-phase-7.ps1`: non-destructive diagnostics for Phase 7 services, RBAC-adjacent state, Chaos Mesh resources, ClickHouse counts, Redpanda topics, logs, policy, plans, runs, and scores.
+
+Non-disruptive validation:
+
+```powershell
+.\scripts\accept-phase-7.ps1 -DryRunOnly
+.\scripts\demo-phase-7.ps1 -DryRunOnly
+```
+
+Phase 7 safety boundaries:
+
+- chaos is allowlisted to `cascade-targets` by default.
+- system namespaces and `cascade-system` are denied.
+- real execution requires `approved=true`.
+- generated Chaos Mesh resources carry Cascade cleanup labels.
+- executor RBAC cannot mutate deployments, services, configmaps, secrets, or remediation resources.
+- suggested remediation remains text only.
+
+`PHASE 7 ACCEPTANCE: PASS` means the planner can create safe plans, unsafe plans are rejected, dry-runs do not create Chaos Mesh resources, real bounded chaos works when enabled, cleanup is verified, observations/scores are persisted, and `chaos.experiments` contains lifecycle events.
+
 ## Legacy And Recovery Scripts
 
 These are intentionally kept because they are useful when the local kind cluster needs recovery or focused regression checks:
@@ -108,6 +143,7 @@ These are intentionally kept because they are useful when the local kind cluster
 - `debug-phase-4.ps1`: current Phase 4 diagnostics; prefer this for feature extraction or anomaly detection issues.
 - `debug-phase-5.ps1`: current Phase 5 diagnostics; prefer this for knowledge ingestion or retrieval issues.
 - `debug-phase-6.ps1`: current Phase 6 diagnostics; prefer this for agent runtime or tool gateway issues.
+- `debug-phase-7.ps1`: current Phase 7 diagnostics; prefer this for chaos planning, execution, cleanup, or scoring issues.
 
 ## Removed Obsolete Scripts And Docs
 
@@ -123,6 +159,7 @@ Before beginning Phase 7, run the current acceptance gates in order:
 .\scripts\accept-phase-4.ps1
 .\scripts\accept-phase-5.ps1
 .\scripts\accept-phase-6.ps1
+.\scripts\accept-phase-7.ps1 -DryRunOnly
 ```
 
 Local `.env` files, kubeconfigs, debug outputs, database volumes, generated reports, and model artifacts are intentionally ignored by the root `.gitignore`. Use `.env.example` for safe placeholder configuration only.
@@ -135,3 +172,4 @@ Local `.env` files, kubeconfigs, debug outputs, database volumes, generated repo
 - Phase 4 anomaly issue: run `.\scripts\debug-phase-4.ps1`.
 - Phase 5 knowledge issue: run `.\scripts\debug-phase-5.ps1`.
 - Phase 6 agent runtime issue: run `.\scripts\debug-phase-6.ps1`.
+- Phase 7 chaos automation issue: run `.\scripts\debug-phase-7.ps1`.

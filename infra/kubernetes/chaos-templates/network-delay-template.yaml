@@ -1,0 +1,23 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: cascade-phase7-network-delay-template
+  namespace: cascade-targets
+  labels:
+    app.kubernetes.io/part-of: cascade
+    cascade.io/phase: phase7
+    cascade.io/managed-by: chaos-executor-service
+    cascade.io/experiment-id: template
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - cascade-targets
+    labelSelectors:
+      app: recommendationservice
+  delay:
+    latency: 200ms
+    correlation: "25"
+    jitter: 20ms
+  duration: 30s

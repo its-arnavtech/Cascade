@@ -1,0 +1,22 @@
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: cascade-phase7-stress-cpu-template
+  namespace: cascade-targets
+  labels:
+    app.kubernetes.io/part-of: cascade
+    cascade.io/phase: phase7
+    cascade.io/managed-by: chaos-executor-service
+    cascade.io/experiment-id: template
+spec:
+  mode: one
+  selector:
+    namespaces:
+      - cascade-targets
+    labelSelectors:
+      app: recommendationservice
+  stressors:
+    cpu:
+      workers: 1
+      load: 20
+  duration: 30s

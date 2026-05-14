@@ -29,7 +29,7 @@ spec:
                 sleep 5
               done
 
-              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations; do
+              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments; do
                 rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" || true
               done
 

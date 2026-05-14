@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-executor-service
+  namespace: cascade-system
+  labels:
+    app: chaos-executor-service
+spec:
+  selector:
+    app: chaos-executor-service
+  ports:
+    - name: http
+      port: 8020
+      targetPort: http

@@ -219,6 +219,57 @@ class ClickHouseClient:
                 stats[table] = None
         return stats
 
+    async def insert_chaos_experiment_plan(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_experiment_plans", [row])
+
+    async def insert_chaos_experiment_run(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_experiment_runs", [row])
+
+    async def insert_chaos_observation(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_observations", [row])
+
+    async def insert_resilience_score(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("resilience_scores", [row])
+
+    async def insert_chaos_safety_violation(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_safety_violations", [row])
+
+    async def recent_chaos_plans(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"target_service": service, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_plans {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
+
+    async def chaos_plan(self, plan_id: str) -> dict[str, Any] | None:
+        safe = self._quote(plan_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_plans WHERE plan_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def recent_chaos_runs(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"target_service": service, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_runs {where} ORDER BY started_at DESC LIMIT {self._limit(limit)}")
+
+    async def chaos_run_detail(self, run_id: str) -> dict[str, Any]:
+        safe = self._quote(run_id)
+        runs = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_runs WHERE run_id = {safe} ORDER BY started_at DESC LIMIT 1")
+        observations = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_observations WHERE run_id = {safe} ORDER BY observed_at DESC LIMIT 1")
+        scores = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.resilience_scores WHERE run_id = {safe} ORDER BY computed_at DESC LIMIT 1")
+        return {"run": runs[0] if runs else None, "observation": observations[0] if observations else None, "score": scores[0] if scores else None}
+
+    async def recent_resilience_scores(self, limit: int = 20, service: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"service": service})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.resilience_scores {where} ORDER BY computed_at DESC LIMIT {self._limit(limit)}")
+
+    async def recent_chaos_safety_violations(self, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_safety_violations ORDER BY created_at DESC LIMIT {self._limit(limit)}")
+
+    async def chaos_stats(self) -> dict[str, int | None]:
+        stats: dict[str, int | None] = {}
+        for table in ["chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations"]:
+            try:
+                stats[table] = await self.count(table)
+            except Exception:
+                stats[table] = None
+        return stats
+
     @staticmethod
     def json_dumps(value: Any) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -576,5 +627,108 @@ CREATE TABLE IF NOT EXISTS {db}.agent_tool_calls (
     error_message String
 ) ENGINE = MergeTree
 ORDER BY (investigation_id, called_at, call_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_experiment_plans (
+    plan_id String,
+    created_at DateTime64(3),
+    updated_at DateTime64(3),
+    status String,
+    plan_type String,
+    experiment_kind String,
+    target_namespace String,
+    target_service String,
+    target_workload String,
+    target_selector_json String,
+    duration_seconds UInt64,
+    blast_radius_score Float64,
+    safety_score Float64,
+    risk_level String,
+    objective String,
+    hypothesis String,
+    expected_impact String,
+    safety_policy_json String,
+    manifest_json String,
+    plan_json String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (created_at, plan_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_experiment_runs (
+    run_id String,
+    plan_id String,
+    experiment_id String,
+    started_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    status String,
+    dry_run UInt8,
+    approved UInt8,
+    experiment_kind String,
+    target_namespace String,
+    target_service String,
+    target_workload String,
+    chaos_resource_name String,
+    chaos_resource_uid String,
+    duration_seconds UInt64,
+    cleanup_status String,
+    error_message String,
+    run_json String
+) ENGINE = ReplacingMergeTree(started_at)
+ORDER BY (started_at, run_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_observations (
+    observation_id String,
+    run_id String,
+    plan_id String,
+    observed_at DateTime64(3),
+    observation_window_seconds UInt64,
+    telemetry_events_count UInt64,
+    anomaly_events_count UInt64,
+    incidents_count UInt64,
+    investigation_id String,
+    affected_services_json String,
+    telemetry_summary_json String,
+    anomaly_summary_json String,
+    incident_summary_json String,
+    observation_json String
+) ENGINE = MergeTree
+ORDER BY (run_id, observed_at, observation_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.resilience_scores (
+    score_id String,
+    run_id String,
+    plan_id String,
+    computed_at DateTime64(3),
+    service String,
+    namespace String,
+    experiment_kind String,
+    resilience_score Float64,
+    recovery_score Float64,
+    blast_radius_score Float64,
+    anomaly_penalty Float64,
+    incident_penalty Float64,
+    evidence_score Float64,
+    grade String,
+    explanation String,
+    recommendations_json String,
+    score_json String
+) ENGINE = ReplacingMergeTree(computed_at)
+ORDER BY (service, computed_at, score_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_safety_violations (
+    violation_id String,
+    created_at DateTime64(3),
+    plan_id String,
+    run_id String,
+    violation_type String,
+    severity String,
+    message String,
+    policy_json String,
+    request_json String
+) ENGINE = MergeTree
+ORDER BY (created_at, violation_id)
 """,
     ]

@@ -35,6 +35,10 @@ TOOL_REGISTRY: dict[str, ToolContract] = {
     "generate_incident_timeline": ToolContract("generate_incident_timeline", "Generate incident timeline template.", "incident-timeline-service", "POST", "/timeline"),
     "generate_investigation_report_template": ToolContract("generate_investigation_report_template", "Generate incident report template.", "incident-timeline-service", "POST", "/report"),
     "get_debug_counts": ToolContract("get_debug_counts", "Fetch debug row and point counts.", "retrieval-service", "GET", "/debug/counts"),
+    "get_recent_chaos_runs": ToolContract("get_recent_chaos_runs", "Fetch recent Phase 7 chaos runs.", "chaos-executor-service", "GET", "/runs"),
+    "get_chaos_run": ToolContract("get_chaos_run", "Fetch one Phase 7 chaos run detail.", "chaos-executor-service", "GET", "/runs/{run_id}"),
+    "get_recent_resilience_scores": ToolContract("get_recent_resilience_scores", "Fetch recent resilience scores.", "chaos-executor-service", "GET", "/scores/recent"),
+    "get_safety_policy": ToolContract("get_safety_policy", "Fetch active chaos safety policy.", "chaos-executor-service", "GET", "/safety/policy"),
 }
 
 

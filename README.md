@@ -1,6 +1,6 @@
 # CASCADE
 
-Current project phase: Phase 6, the agent runtime.
+Current project phase: Phase 7, chaos engineering automation.
 
 Phase 1 status: complete.
 
@@ -12,7 +12,9 @@ Phase 4 status: complete. Feature extraction, explainable baseline anomaly detec
 
 Phase 5 status: complete. Runbook/document ingestion, incident report ingestion, anomaly knowledge ingestion, topology knowledge ingestion, deterministic embeddings, ClickHouse knowledge metadata, Qdrant knowledge vectors, source-grounded search, context pack assembly, and retrieval-service knowledge APIs are implemented for local kind.
 
-Phase 6 status: implemented. Read-only agent tool gateway, deterministic local investigation graph, evidence-backed report generation, investigation persistence, agent step/tool-call traceability, optional LangGraph/LLM hooks, and compact investigation lifecycle events are implemented for local kind.
+Phase 6 status: complete. Read-only agent tool gateway, deterministic local investigation graph, evidence-backed report generation, investigation persistence, agent step/tool-call traceability, optional LangGraph/LLM hooks, and compact investigation lifecycle events are implemented for local kind.
+
+Phase 7 status: implemented. Safe chaos planning, Chaos Mesh execution, safety policy enforcement, dry-run validation, observation windows, resilience scoring, ClickHouse persistence, Redpanda chaos lifecycle events, and optional Phase 6 investigation integration are implemented for local kind.
 
 ## Phase 2 Quickstart
 
@@ -63,6 +65,18 @@ See `docs/phase-5-rag-knowledge-layer.md` for knowledge ingestion, retrieval API
 ```
 
 See `docs/phase-6-agent-runtime.md` for the tool gateway, investigation graph, deterministic mode, APIs, safety boundaries, acceptance, and troubleshooting.
+
+## Phase 7 Quickstart
+
+```powershell
+.\scripts\deploy-phase-7.ps1
+.\scripts\accept-phase-7.ps1
+.\scripts\demo-phase-7.ps1
+```
+
+Use `.\scripts\accept-phase-7.ps1 -DryRunOnly` or `.\scripts\demo-phase-7.ps1 -DryRunOnly` for non-disruptive validation.
+
+See `docs/phase-7-chaos-automation.md` for the safety model, Chaos Mesh templates, execution APIs, resilience scoring, RBAC boundaries, acceptance, and troubleshooting.
 
 ## Phase 3 - Storage + Memory Layer
 
@@ -166,6 +180,30 @@ anomaly_events / incidents / telemetry / topology / knowledge
 -> agent.investigations
 ```
 
+## Phase 7 - Chaos Engineering Automation
+
+Phase 7 lets Cascade safely run bounded Chaos Mesh experiments against Online Boutique and score resilience from real telemetry/anomaly/incident evidence.
+
+- `chaos-planner-service` creates safety-validated experiment plans.
+- `chaos-executor-service` executes approved or dry-run plans and always re-validates safety.
+- safety policy limits chaos to allowlisted services in `cascade-targets`.
+- executor RBAC can create/delete Chaos Mesh resources only, not mutate application deployments or infrastructure.
+- ClickHouse stores `chaos_experiment_plans`, `chaos_experiment_runs`, `chaos_observations`, `resilience_scores`, and `chaos_safety_violations`.
+- Redpanda topic `chaos.experiments` stores compact lifecycle events.
+- observation collects telemetry, anomalies, incidents, and optional Phase 6 investigations.
+- Phase 7 does not execute remediation.
+
+```text
+topology/anomalies/incidents/knowledge
+-> chaos-planner-service
+-> chaos_experiment_plans
+-> chaos-executor-service
+-> Chaos Mesh CRDs
+-> observations/resilience_scores
+-> chaos.experiments
+-> optional agent investigation
+```
+
 ## Current Stack
 
 - Docker Desktop
@@ -192,10 +230,6 @@ anomaly_events / incidents / telemetry / topology / knowledge
 - Do not commit local Kubernetes configs, ClickHouse/Qdrant/Redpanda data directories, or exported telemetry/incident dumps.
 
 ## Remaining Roadmap
-
-### Phase 7 - Chaos Engineering Automation
-
-Goal: close the loop with controlled failure injection, blast-radius controls, resilience scoring, and safe experiment execution.
 
 ### Phase 8 - Remediation + Human Approval
 
