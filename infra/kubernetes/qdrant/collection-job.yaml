@@ -29,7 +29,16 @@ spec:
                 --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
               if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
                 cat /tmp/qdrant-init-response
+              else
+                cat /tmp/qdrant-init-response
+                exit 1
+              fi
+              code="$(curl -s -o /tmp/qdrant-knowledge-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_knowledge_base \
+                -H 'Content-Type: application/json' \
+                --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
+              if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
+                cat /tmp/qdrant-knowledge-init-response
                 exit 0
               fi
-              cat /tmp/qdrant-init-response
+              cat /tmp/qdrant-knowledge-init-response
               exit 1

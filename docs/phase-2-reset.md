@@ -1,5 +1,7 @@
 # Phase 2 Reset Safety Note
 
+LEGACY / HISTORICAL: this note documents the earlier recovery path from the unstable hand-rolled Apache Kafka local deployment. The current supported Phase 2 path uses Redpanda and is validated by `.\scripts\accept-phase-2.ps1`.
+
 Cascade is temporarily resetting to a stable Phase 2.1 baseline because the hand-rolled Apache Kafka Kubernetes deployment was unstable in local kind. Kafka entered repeated CrashLoopBackOff states, which caused `observation-service` and `stream-enricher` to retry against an unavailable broker instead of proving the event backbone.
 
 This reset does not delete source code. Phase 2.2 files remain in the repository for review and reuse, but broker and stream-enricher Kubernetes resources are removed from the active cluster so Phase 2.1 can be validated cleanly.

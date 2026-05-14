@@ -25,6 +25,7 @@ Use these after Phase 2 is available:
 .\scripts\deploy-phase-3.ps1
 .\scripts\accept-phase-3.ps1
 .\scripts\demo-phase-3.ps1
+.\scripts\debug-phase-3.ps1
 ```
 
 - `deploy-phase-3.ps1`: deploys the Phase 3 storage and memory layer. By default it first refreshes Phase 2, then builds and loads `telemetry-archiver`, `memory-indexer`, and `retrieval-service`, deploys ClickHouse and Qdrant, runs idempotent init jobs, and waits for rollouts.
@@ -42,7 +43,8 @@ Use these after Phase 3 is available:
 ```powershell
 .\scripts\deploy-phase-4.ps1
 .\scripts\accept-phase-4.ps1
-.\scripts\demo-phase-4.ps1
+.\scripts\demo-phase-4.ps1 -Synthetic
+.\scripts\debug-phase-4.ps1
 ```
 
 - `deploy-phase-4.ps1`: deploys the Phase 4 anomaly layer. By default it refreshes Phase 3, then builds and loads `feature-extractor-service`, `anomaly-detector-service`, and the updated `retrieval-service`, creates Phase 4 ClickHouse tables, ensures `anomalies.detected`, and waits for rollouts.
@@ -52,6 +54,25 @@ Use these after Phase 3 is available:
 - `debug-phase-4.ps1`: non-destructive diagnostics for Phase 4 service state, logs, ClickHouse counts, feature windows, anomaly rows, model runs, and health endpoints.
 
 `PHASE 4 ACCEPTANCE: PASS` means real telemetry was transformed into feature windows, detector services scored those windows, a labeled anomaly path produced stored anomaly rows, `anomalies.detected` received valid JSON, and retrieval-service exposes Phase 4 query APIs.
+
+## Normal Phase 5 Workflow
+
+Use these after Phase 4 is available:
+
+```powershell
+.\scripts\deploy-phase-5.ps1
+.\scripts\accept-phase-5.ps1
+.\scripts\demo-phase-5.ps1
+.\scripts\debug-phase-5.ps1
+```
+
+- `deploy-phase-5.ps1`: deploys the Phase 5 RAG + knowledge layer. By default it refreshes Phase 4, builds and loads `knowledge-ingestion-service`, `knowledge-retrieval-service`, and the updated `retrieval-service`, applies Phase 5 ClickHouse schema and Qdrant collection initialization, deploys services, and runs initial ingestion.
+- `accept-phase-5.ps1`: final Phase 5 acceptance gate. It verifies Phase 4 baseline readiness, Phase 5 schema, `cascade_knowledge_base`, ingestion into ClickHouse and Qdrant, source-grounded knowledge search/context APIs, and retrieval-service knowledge integration.
+- `demo-phase-5.ps1`: demonstrates docs/incidents/anomalies/topology ingestion, knowledge counts, source-grounded operational search, context pack assembly, and retrieval-service knowledge APIs.
+- `reset-phase-5.ps1`: removes and redeploys only Phase 5 services. It does not delete Phase 1/2/3/4 infrastructure. Use `-ClearPhase5Data` only when intentionally truncating Phase 5 ClickHouse tables and deleting `cascade_knowledge_base`.
+- `debug-phase-5.ps1`: non-destructive diagnostics for Phase 5 service state, logs, ClickHouse counts, Qdrant collection state, health endpoints, recent ingestion runs, and sample search output.
+
+`PHASE 5 ACCEPTANCE: PASS` means operational docs, incident reports, anomaly events, and topology snapshots can be ingested into ClickHouse/Qdrant and retrieved as source-grounded evidence with citations and context packs.
 
 ## Legacy And Recovery Scripts
 
@@ -64,10 +85,24 @@ These are intentionally kept because they are useful when the local kind cluster
 - `test-observation-service.ps1`: narrow observation-service endpoint smoke test referenced by the observation-service README.
 - `debug-phase-3.ps1`: current Phase 3 diagnostics; prefer this for storage or memory issues.
 - `debug-phase-4.ps1`: current Phase 4 diagnostics; prefer this for feature extraction or anomaly detection issues.
+- `debug-phase-5.ps1`: current Phase 5 diagnostics; prefer this for knowledge ingestion or retrieval issues.
 
-## Removed Obsolete Scripts
+## Removed Obsolete Scripts And Docs
 
-The old Apache Kafka-only helper scripts and the Phase 2.2-only acceptance gate were removed after the full Phase 2 gate passed. Use `accept-phase-2.ps1` for the current acceptance path.
+No active Phase 2-5 workflow scripts were removed in the pre-Phase-6 cleanup. One stale root planning note was removed because it had obsolete phase ordering, encoding artifacts, and no current references.
+
+## Pre-Phase-6 Hygiene
+
+Before beginning Phase 6, run the current acceptance gates in order:
+
+```powershell
+.\scripts\accept-phase-2.ps1
+.\scripts\accept-phase-3.ps1
+.\scripts\accept-phase-4.ps1
+.\scripts\accept-phase-5.ps1
+```
+
+Local `.env` files, kubeconfigs, debug outputs, database volumes, generated reports, and model artifacts are intentionally ignored by the root `.gitignore`. Use `.env.example` for safe placeholder configuration only.
 
 ## Failure Triage
 
@@ -75,3 +110,4 @@ The old Apache Kafka-only helper scripts and the Phase 2.2-only acceptance gate 
 - Phase 2.1 regression: run `.\scripts\accept-phase-2-1.ps1`.
 - Broken local cluster state: run `.\scripts\reset-to-phase-2-1.ps1`, then redeploy with `.\scripts\deploy-phase-2.ps1`.
 - Phase 4 anomaly issue: run `.\scripts\debug-phase-4.ps1`.
+- Phase 5 knowledge issue: run `.\scripts\debug-phase-5.ps1`.

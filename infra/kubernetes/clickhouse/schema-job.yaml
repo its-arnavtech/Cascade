@@ -157,4 +157,70 @@ spec:
                   config_json String,
                   error_message String
               ) ENGINE = MergeTree ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_documents (
+                  document_id String,
+                  source_type String,
+                  document_type String,
+                  title String,
+                  source_path String,
+                  source_uri String,
+                  content_hash String,
+                  ingested_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  phase String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  tags_json String,
+                  metadata_json String,
+                  raw_content String
+              ) ENGINE = ReplacingMergeTree(updated_at)
+              ORDER BY (source_type, document_type, document_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_chunks (
+                  chunk_id String,
+                  document_id String,
+                  chunk_index UInt64,
+                  source_type String,
+                  document_type String,
+                  title String,
+                  source_path String,
+                  content_hash String,
+                  chunk_hash String,
+                  ingested_at DateTime64(3),
+                  phase String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  tags_json String,
+                  metadata_json String,
+                  chunk_text String,
+                  embedding_model String,
+                  qdrant_collection String,
+                  qdrant_point_id String
+              ) ENGINE = ReplacingMergeTree(ingested_at)
+              ORDER BY (source_type, document_type, document_id, chunk_index, chunk_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_ingestion_runs (
+                  run_id String,
+                  started_at DateTime64(3),
+                  completed_at DateTime64(3),
+                  source String,
+                  source_type String,
+                  documents_seen UInt64,
+                  documents_ingested UInt64,
+                  chunks_created UInt64,
+                  chunks_indexed UInt64,
+                  status String,
+                  config_json String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_queries (
+                  query_id String,
+                  queried_at DateTime64(3),
+                  query_text String,
+                  filters_json String,
+                  result_count UInt64,
+                  top_score Float64,
+                  latency_ms Float64,
+                  response_json String
+              ) ENGINE = MergeTree ORDER BY (queried_at, query_id);
               SQL

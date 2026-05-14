@@ -27,7 +27,7 @@ The stream enricher consumes `telemetry.raw`, applies simple rule-based enrichme
 
 ## Run Locally
 
-Start Kafka first:
+For current kind-based development, use Redpanda through `.\scripts\deploy-phase-2.ps1`. The old Docker Compose Apache Kafka setup remains available only as a legacy local compatibility path:
 
 ```powershell
 docker compose -f infra/kafka/docker-compose.yaml up -d

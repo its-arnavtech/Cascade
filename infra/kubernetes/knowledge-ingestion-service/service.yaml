@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-ingestion-service
+  namespace: cascade-system
+  labels:
+    app: knowledge-ingestion-service
+spec:
+  selector:
+    app: knowledge-ingestion-service
+  ports:
+    - name: http
+      port: 8015
+      targetPort: http

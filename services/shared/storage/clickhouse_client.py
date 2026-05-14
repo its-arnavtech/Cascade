@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import json
 from collections.abc import Iterable
 from typing import Any
 
@@ -123,6 +124,71 @@ class ClickHouseClient:
     async def count(self, table: str) -> int:
         text = await self.fetch_text(f"SELECT count() FROM {self.settings.clickhouse_database}.{table}")
         return int(text.strip() or "0")
+
+    async def table_exists(self, table: str) -> bool:
+        safe = self._quote(table)
+        text = await self.fetch_text(f"SELECT count() FROM system.tables WHERE database = {self._quote(self.settings.clickhouse_database)} AND name = {safe}")
+        return int(text.strip() or "0") > 0
+
+    async def insert_knowledge_documents(self, rows: Iterable[dict[str, Any]]) -> int:
+        return await self.insert_rows("knowledge_documents", rows)
+
+    async def insert_knowledge_chunks(self, rows: Iterable[dict[str, Any]]) -> int:
+        return await self.insert_rows("knowledge_chunks", rows)
+
+    async def insert_knowledge_ingestion_run(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("knowledge_ingestion_runs", [row])
+
+    async def insert_knowledge_query(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("knowledge_queries", [row])
+
+    async def knowledge_chunks_by_ids(self, chunk_ids: list[str]) -> list[dict[str, Any]]:
+        if not chunk_ids:
+            return []
+        values = ", ".join(self._quote(item) for item in chunk_ids)
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.knowledge_chunks WHERE chunk_id IN ({values})")
+
+    async def existing_knowledge_document_ids(self, document_ids: list[str]) -> set[str]:
+        if not document_ids:
+            return set()
+        values = ", ".join(self._quote(item) for item in document_ids)
+        rows = await self.fetch_json_rows(f"SELECT DISTINCT document_id FROM {self.settings.clickhouse_database}.knowledge_documents WHERE document_id IN ({values})")
+        return {str(row["document_id"]) for row in rows}
+
+    async def existing_knowledge_chunk_ids(self, chunk_ids: list[str]) -> set[str]:
+        if not chunk_ids:
+            return set()
+        values = ", ".join(self._quote(item) for item in chunk_ids)
+        rows = await self.fetch_json_rows(f"SELECT DISTINCT chunk_id FROM {self.settings.clickhouse_database}.knowledge_chunks WHERE chunk_id IN ({values})")
+        return {str(row["chunk_id"]) for row in rows}
+
+    async def recent_knowledge_documents(self, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.knowledge_documents ORDER BY updated_at DESC LIMIT {self._limit(limit)}")
+
+    async def recent_knowledge_chunks(self, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.knowledge_chunks ORDER BY ingested_at DESC LIMIT {self._limit(limit)}")
+
+    async def recent_knowledge_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.knowledge_ingestion_runs ORDER BY started_at DESC LIMIT {self._limit(limit)}")
+
+    async def recent_incident_reports_for_knowledge(self, limit: int = 50) -> list[dict[str, Any]]:
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.incident_reports ORDER BY generated_at DESC LIMIT {self._limit(limit)}")
+
+    async def recent_topology_snapshots(self, limit: int = 10) -> list[dict[str, Any]]:
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.topology_snapshots ORDER BY captured_at DESC LIMIT {self._limit(limit)}")
+
+    async def knowledge_stats(self) -> dict[str, int | None]:
+        stats: dict[str, int | None] = {}
+        for table in ["knowledge_documents", "knowledge_chunks", "knowledge_ingestion_runs", "knowledge_queries"]:
+            try:
+                stats[table] = await self.count(table)
+            except Exception:
+                stats[table] = None
+        return stats
+
+    @staticmethod
+    def json_dumps(value: Any) -> str:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
     async def _post(self, query: str, payload: bytes) -> None:
         async with httpx.AsyncClient(timeout=self.settings.clickhouse_timeout_seconds) as client:
@@ -323,5 +389,81 @@ CREATE TABLE IF NOT EXISTS {db}.model_runs (
     error_message String
 ) ENGINE = MergeTree
 ORDER BY (started_at, run_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.knowledge_documents (
+    document_id String,
+    source_type String,
+    document_type String,
+    title String,
+    source_path String,
+    source_uri String,
+    content_hash String,
+    ingested_at DateTime64(3),
+    updated_at DateTime64(3),
+    phase String,
+    service String,
+    namespace String,
+    severity String,
+    tags_json String,
+    metadata_json String,
+    raw_content String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (source_type, document_type, document_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.knowledge_chunks (
+    chunk_id String,
+    document_id String,
+    chunk_index UInt64,
+    source_type String,
+    document_type String,
+    title String,
+    source_path String,
+    content_hash String,
+    chunk_hash String,
+    ingested_at DateTime64(3),
+    phase String,
+    service String,
+    namespace String,
+    severity String,
+    tags_json String,
+    metadata_json String,
+    chunk_text String,
+    embedding_model String,
+    qdrant_collection String,
+    qdrant_point_id String
+) ENGINE = ReplacingMergeTree(ingested_at)
+ORDER BY (source_type, document_type, document_id, chunk_index, chunk_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.knowledge_ingestion_runs (
+    run_id String,
+    started_at DateTime64(3),
+    completed_at DateTime64(3),
+    source String,
+    source_type String,
+    documents_seen UInt64,
+    documents_ingested UInt64,
+    chunks_created UInt64,
+    chunks_indexed UInt64,
+    status String,
+    config_json String,
+    error_message String
+) ENGINE = MergeTree
+ORDER BY (started_at, run_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.knowledge_queries (
+    query_id String,
+    queried_at DateTime64(3),
+    query_text String,
+    filters_json String,
+    result_count UInt64,
+    top_score Float64,
+    latency_ms Float64,
+    response_json String
+) ENGINE = MergeTree
+ORDER BY (queried_at, query_id)
 """,
     ]

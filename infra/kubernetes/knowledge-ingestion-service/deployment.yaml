@@ -1,27 +1,27 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: retrieval-service
+  name: knowledge-ingestion-service
   namespace: cascade-system
   labels:
-    app: retrieval-service
+    app: knowledge-ingestion-service
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: retrieval-service
+      app: knowledge-ingestion-service
   template:
     metadata:
       labels:
-        app: retrieval-service
+        app: knowledge-ingestion-service
     spec:
       containers:
-        - name: retrieval-service
-          image: cascade-retrieval-service:dev
+        - name: knowledge-ingestion-service
+          image: cascade-knowledge-ingestion-service:dev
           imagePullPolicy: Never
           ports:
             - name: http
-              containerPort: 8012
+              containerPort: 8015
           env:
             - name: CLICKHOUSE_HOST
               value: clickhouse.cascade-system.svc.cluster.local
@@ -31,12 +31,18 @@ spec:
               value: cascade
             - name: QDRANT_URL
               value: http://qdrant.cascade-system.svc.cluster.local:6333
-            - name: QDRANT_COLLECTION
-              value: cascade_incident_memory
             - name: QDRANT_KNOWLEDGE_COLLECTION
               value: cascade_knowledge_base
             - name: EMBEDDING_DIMENSIONS
               value: "128"
+            - name: KNOWLEDGE_ROOT_PATH
+              value: /app/knowledge
+            - name: CHUNK_SIZE
+              value: "1000"
+            - name: CHUNK_OVERLAP
+              value: "150"
+            - name: KNOWLEDGE_BACKGROUND_ENABLED
+              value: "false"
           readinessProbe:
             httpGet:
               path: /ready
@@ -49,3 +55,10 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

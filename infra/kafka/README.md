@@ -1,5 +1,7 @@
 # Cascade Kafka Local Development
 
+LEGACY / HISTORICAL: this Docker Compose Apache Kafka setup is kept for reference only. The current supported Phase 2-5 local kind workflow uses Kafka-compatible Redpanda under `infra/kubernetes/redpanda/`.
+
 This starts a single-node Kafka broker in KRaft mode for Phase 2.2. It exposes Kafka on `localhost:9092` and creates:
 
 - `telemetry.raw`

@@ -72,7 +72,7 @@ $env:TARGET_NAMESPACE = "cascade-targets"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Start Kafka before running locally:
+For current kind-based development, use Redpanda through `.\scripts\deploy-phase-2.ps1`. The old Docker Compose Apache Kafka setup remains available only as a legacy local compatibility path:
 
 ```powershell
 docker compose -f infra/kafka/docker-compose.yaml up -d
