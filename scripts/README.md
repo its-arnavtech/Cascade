@@ -242,3 +242,20 @@ Local `.env` files, kubeconfigs, debug outputs, database volumes, generated repo
 - Phase 7 chaos automation issue: run `.\scripts\debug-phase-7.ps1`.
 - Phase 8 remediation approval issue: run `.\scripts\debug-phase-8.ps1`.
 - Phase 9 command center issue: run `.\scripts\debug-phase-9.ps1`.
+
+## Phase 10 Final Hardening Scripts
+
+- `accept-all.ps1`: runs Phase 2 through Phase 9 acceptance, writes logs under `run-output/accept-all-<timestamp>/`, stops on first failure unless `-ContinueOnFailure` is provided, and supports `-SkipPhase9`.
+- `debug-all.ps1`: collects a local support bundle under `support-bundles/<timestamp>/` with Kubernetes state, events, logs, Redpanda topics, ClickHouse counts, Qdrant collection info, health checks, and Command Center status.
+- `audit-secrets.ps1`: scans tracked files for suspicious secret-like keys without printing values. It exits nonzero on high-confidence non-placeholder assignments.
+- `ensure-redpanda-topics.ps1`: idempotently ensures the required Cascade Redpanda topics exist.
+- `backup-clickhouse.ps1`, `list-clickhouse-backups.ps1`, `restore-clickhouse.ps1`: local ClickHouse backup/list/restore helpers. Restore is dry-run by default and requires `-ConfirmRestore`.
+- `backup-qdrant.ps1`, `list-qdrant-backups.ps1`, `restore-qdrant.ps1`: local Qdrant snapshot/list/restore helpers. Restore is dry-run by default and requires `-ConfirmRestore`.
+
+Safe flags and defaults:
+
+- `-DryRunOnly` keeps Phase 7 validation from creating real chaos.
+- `-NoBrowser` keeps demo scripts from opening a browser.
+- `-ConfirmRestore` is required for restore mutation.
+- Real remediation execution remains disabled by default through `EXECUTION_ENABLED=false`.
+- Real chaos and real remediation routes remain blocked through the Command Center proxy unless explicitly reconfigured.

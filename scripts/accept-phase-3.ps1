@@ -7,6 +7,7 @@ $Passed = New-Object System.Collections.Generic.List[string]
 $Failed = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
 $PortForwards = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+. "$PSScriptRoot\lib\kafka-topics.ps1"
 
 function Write-Section { param([string]$Title) Write-Host ""; Write-Host "============================================================"; Write-Host $Title; Write-Host "============================================================" }
 function Add-Pass { param([string]$Message) $script:Passed.Add($Message) | Out-Null; Write-Host "PASS: $Message" }
@@ -26,11 +27,10 @@ try {
     $api = Invoke-Kubectl @("version", "--request-timeout=5s"); if ($api.ExitCode -eq 0) { Add-Pass "Kubernetes API reachable" } else { Add-Fail "Kubernetes API unreachable"; throw "No cluster" }
 
     foreach ($d in @("redpanda", "stream-enricher", "experiment-tracker-service", "topology-service", "causal-reconstruction-service", "incident-timeline-service")) { Test-Deployment $d }
-    $rpPod = (Invoke-Kubectl @("-n", $Namespace, "get", "pod", "-l", "app=redpanda", "-o", "jsonpath={.items[0].metadata.name}")).Text.Trim()
-    if ($rpPod) {
-        $topics = (Invoke-Kubectl @("-n", $Namespace, "exec", $rpPod, "--", "rpk", "-X", "brokers=localhost:9092", "topic", "list")).Text
-        foreach ($t in @("telemetry.raw", "telemetry.enriched", "experiments.events")) { if ($topics -match [regex]::Escape($t)) { Add-Pass "Topic $t exists" } else { Add-Fail "Topic $t missing" } }
-    } else { Add-Fail "Redpanda pod missing" }
+    foreach ($t in @("telemetry.raw", "telemetry.enriched", "experiments.events")) {
+        $topicCheck = Test-CascadeRedpandaTopic -Namespace $Namespace -Topic $t
+        if ($topicCheck.Exists) { Add-Pass "Topic $t exists" } else { Add-Fail "Topic $t missing. Raw topic list: $($topicCheck.Raw)" }
+    }
 
     foreach ($d in @("clickhouse", "qdrant", "telemetry-archiver", "memory-indexer", "retrieval-service")) { Test-Deployment $d }
     foreach ($svc in @("clickhouse", "qdrant", "telemetry-archiver", "memory-indexer", "retrieval-service")) { Test-Endpoint $svc }
@@ -113,4 +113,3 @@ Write-Host ""
 if ($Failed.Count -eq 0) { Write-Host "PHASE 3 ACCEPTANCE: PASS"; exit 0 }
 Write-Host "PHASE 3 ACCEPTANCE: FAIL"
 exit 1
-
