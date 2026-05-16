@@ -5,6 +5,7 @@ $Passed = New-Object System.Collections.Generic.List[string]
 $Failed = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
 $PortForwards = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+. "$PSScriptRoot\lib\kafka-topics.ps1"
 
 function Write-Section { param([string]$Title) Write-Host ""; Write-Host "============================================================"; Write-Host $Title; Write-Host "============================================================" }
 function Add-Pass { param([string]$Message) $script:Passed.Add($Message) | Out-Null; Write-Host "PASS: $Message" }
@@ -30,8 +31,8 @@ try {
     try { [void][int](CH "SELECT count() FROM cascade.anomaly_events"); Add-Pass "anomaly_events is queryable" } catch { Add-Fail "anomaly_events is not queryable" }
     if ([int](CH "SELECT count() FROM cascade.knowledge_chunks") -gt 0) { Add-Pass "knowledge_chunks has rows" } else { Add-Fail "knowledge_chunks empty" }
 
-    $topicText = (Invoke-Kubectl @("-n", $Namespace, "exec", "deployment/redpanda", "--", "rpk", "topic", "list")).Text
-    if ($topicText -match "(?m)^agent\.investigations\s") { Add-Pass "agent.investigations topic exists" } else { Add-Fail "agent.investigations topic missing" }
+    $topicCheck = Test-CascadeRedpandaTopic -Namespace $Namespace -Topic "agent.investigations"
+    if ($topicCheck.Exists) { Add-Pass "agent.investigations topic exists" } else { Add-Fail "agent.investigations topic missing. Raw topic list: $($topicCheck.Raw)" }
 
     Start-PF "agent-tool-gateway" "8017:8017"
     Start-PF "agent-orchestrator-service" "8018:8018"

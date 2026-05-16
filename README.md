@@ -1,6 +1,6 @@
 # CASCADE
 
-Current project phase: Phase 7, chaos engineering automation.
+Current project phase: Phase 9, UI / Command Center.
 
 Phase 1 status: complete.
 
@@ -14,7 +14,11 @@ Phase 5 status: complete. Runbook/document ingestion, incident report ingestion,
 
 Phase 6 status: complete. Read-only agent tool gateway, deterministic local investigation graph, evidence-backed report generation, investigation persistence, agent step/tool-call traceability, optional LangGraph/LLM hooks, and compact investigation lifecycle events are implemented for local kind.
 
-Phase 7 status: implemented. Safe chaos planning, Chaos Mesh execution, safety policy enforcement, dry-run validation, observation windows, resilience scoring, ClickHouse persistence, Redpanda chaos lifecycle events, and optional Phase 6 investigation integration are implemented for local kind.
+Phase 7 status: complete. Safe chaos planning, Chaos Mesh execution, safety policy enforcement, dry-run validation, observation windows, resilience scoring, ClickHouse persistence, Redpanda chaos lifecycle events, and optional Phase 6 investigation integration are implemented for local kind.
+
+Phase 8 status: complete. Evidence-backed remediation recommendation, rollback/runbook generation, human approval/rejection records, dry-run validation, optional gated execution disabled by default, ClickHouse persistence, Redpanda remediation lifecycle events, and read-only agent remediation tools are implemented for local kind.
+
+Phase 9 status: implemented. React command-center UI, FastAPI fixed-route BFF, Kubernetes deployment, local demo workflow, dashboard, telemetry/anomaly/incident/knowledge/investigation/chaos/remediation/system pages, and safe dry-run operator workflows are implemented for local kind.
 
 ## Phase 2 Quickstart
 
@@ -77,6 +81,31 @@ See `docs/phase-6-agent-runtime.md` for the tool gateway, investigation graph, d
 Use `.\scripts\accept-phase-7.ps1 -DryRunOnly` or `.\scripts\demo-phase-7.ps1 -DryRunOnly` for non-disruptive validation.
 
 See `docs/phase-7-chaos-automation.md` for the safety model, Chaos Mesh templates, execution APIs, resilience scoring, RBAC boundaries, acceptance, and troubleshooting.
+
+## Phase 8 Quickstart
+
+```powershell
+.\scripts\deploy-phase-8.ps1
+.\scripts\accept-phase-8.ps1
+.\scripts\demo-phase-8.ps1
+```
+
+Default Phase 8 acceptance and demo workflows do not mutate target workloads. Real execution is blocked by `EXECUTION_ENABLED=false`.
+
+See `docs/phase-8-remediation-approval.md` for the safety model, approval workflow, dry-run validation, APIs, RBAC boundaries, acceptance, and troubleshooting.
+
+## Phase 9 Quickstart
+
+```powershell
+.\scripts\deploy-phase-9.ps1
+.\scripts\accept-phase-9.ps1
+.\scripts\demo-phase-9.ps1
+kubectl port-forward -n cascade-system svc/command-center 18300:8030
+```
+
+Open `http://localhost:18300`.
+
+See `docs/phase-9-command-center.md` for the UI pages, BFF design, safety boundaries, deployment, acceptance, demo, and troubleshooting workflow.
 
 ## Phase 3 - Storage + Memory Layer
 
@@ -204,6 +233,49 @@ topology/anomalies/incidents/knowledge
 -> optional agent investigation
 ```
 
+## Phase 8 - Remediation + Human Approval
+
+Phase 8 lets Cascade recommend what to do next while keeping humans in control of any mutation.
+
+- `remediation-recommender-service` creates deterministic evidence-backed remediation plans from anomalies, incidents, investigations, chaos results, and runbook knowledge.
+- plans include pre-checks, remediation steps, post-checks, rollback/runbook steps, evidence refs, confidence, action type, and safety findings.
+- `approval-service` stores explicit approval and rejection decisions with approver metadata and expiration.
+- `remediation-executor-service` re-validates policy, records dry-run validation, and blocks real execution unless approval, policy, RBAC, allowlists, and `EXECUTION_ENABLED=true` all permit it.
+- ClickHouse stores `remediation_plans`, `remediation_approvals`, `remediation_executions`, `remediation_safety_violations`, and `remediation_policy_audit`.
+- Redpanda topic `remediation.actions` stores compact lifecycle events.
+- The agent tool gateway exposes only read-only remediation plan/execution/policy tools.
+- Phase 8 does not run arbitrary shell commands, approve on behalf of users, mutate system namespaces, patch secrets/configmaps/RBAC, or execute LLM-generated commands.
+
+```text
+incidents/anomalies/investigations/chaos scores/knowledge
+-> remediation-recommender-service
+-> remediation_plans
+-> approval-service
+-> remediation_approvals
+-> remediation-executor-service
+-> dry-run validation / optional safe execution
+-> remediation_executions
+-> remediation.actions
+```
+
+## Phase 9 - UI / Command Center
+
+Phase 9 makes Cascade usable from a browser instead of only scripts and service endpoints.
+
+- `web/command-center` is a React + TypeScript + Vite UI with TanStack Query, React Router, lucide icons, dark-mode operator styling, and explicit loading/error/empty states.
+- `command-center-api` is a FastAPI BFF that exposes same-origin `/api/*` routes and proxies only to fixed internal Cascade services.
+- The dashboard shows counts, system health, recent anomalies, incidents, investigations, chaos runs/scores, and remediation plans.
+- Telemetry, anomalies, incidents, knowledge, investigations, chaos, remediation, system health, and about pages cover the major Cascade capabilities.
+- Safe actions include knowledge search, deterministic investigation creation, chaos dry-run plan/run, remediation plan creation, approval/rejection records, and remediation dry-run validation.
+- Real remediation execution is disabled by default and blocked by the BFF. Real chaos execution controls are not exposed by default.
+
+```text
+Browser
+-> command-center
+-> command-center-api /api/*
+-> retrieval/knowledge/agent/chaos/remediation services
+```
+
 ## Current Stack
 
 - Docker Desktop
@@ -212,6 +284,10 @@ topology/anomalies/incidents/knowledge
 - PowerShell
 - Python
 - FastAPI
+- React
+- TypeScript
+- Vite
+- TanStack Query
 - aiokafka
 - Redpanda Kafka-compatible broker
 - Prometheus
@@ -231,17 +307,9 @@ topology/anomalies/incidents/knowledge
 
 ## Remaining Roadmap
 
-### Phase 8 - Remediation + Human Approval
+### Phase 10 - Production Hardening + Final Polish
 
-Goal: generate safe evidence-backed remediation plans with human approval and gated execution.
-
-### Phase 9 - UI / Command Center
-
-Goal: make Cascade visually demoable and operationally usable with topology, telemetry, incident, agent, chaos, and remediation views.
-
-### Phase 10 - Production Hardening
-
-Goal: add auth/RBAC, improved docs, architecture diagrams, one-command demo, CI, screenshots/GIFs/video, and final portfolio polish.
+Goal: add auth/RBAC, rate limiting, database backups, stronger secret hygiene, final `.gitignore` and security audit, sensitive API/database credential handling, production docs/polish, architecture diagrams, one-command demo, CI, screenshots/GIFs/video, and final portfolio polish.
 
 ## Author
 

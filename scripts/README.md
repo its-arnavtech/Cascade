@@ -130,6 +130,69 @@ Phase 7 safety boundaries:
 
 `PHASE 7 ACCEPTANCE: PASS` means the planner can create safe plans, unsafe plans are rejected, dry-runs do not create Chaos Mesh resources, real bounded chaos works when enabled, cleanup is verified, observations/scores are persisted, and `chaos.experiments` contains lifecycle events.
 
+## Normal Phase 8 Workflow
+
+Use these after Phase 7 is available:
+
+```powershell
+.\scripts\deploy-phase-8.ps1
+.\scripts\accept-phase-8.ps1
+.\scripts\demo-phase-8.ps1
+.\scripts\debug-phase-8.ps1
+```
+
+- `deploy-phase-8.ps1`: deploys the remediation and human approval layer. By default it refreshes Phase 7, builds and loads `remediation-recommender-service`, `approval-service`, `remediation-executor-service`, and the updated `agent-tool-gateway`, applies Phase 8 ClickHouse schema and Redpanda topic initialization, deploys RBAC/services, and waits for rollouts.
+- `accept-phase-8.ps1`: final Phase 8 acceptance gate. It verifies Phase 7 readiness, Phase 8 schema/topic, service readiness, plan generation, safety rejection, approval/rejection records, dry-run validation, real execution disabled by default, and read-only agent gateway tools.
+- `demo-phase-8.ps1`: demonstrates plan generation, evidence/rollback steps, safety policy, unsafe rejection, approval, dry-run validation, real execution blocking, and read-only agent tools.
+- `reset-phase-8.ps1`: removes and redeploys only Phase 8 resources. It does not delete Phase 1/2/3/4/5/6/7 infrastructure. Use `-ClearPhase8Tables` only when intentionally truncating Phase 8 ClickHouse tables.
+- `debug-phase-8.ps1`: non-destructive diagnostics for Phase 8 services, RBAC-adjacent state, Redpanda topics, ClickHouse counts, logs, policy, plans, approvals, and executions.
+
+Phase 8 safety boundaries:
+
+- recommendations are deterministic and evidence-backed.
+- rollback/runbook steps are required before executable actions.
+- approvals and rejections are explicit audit records.
+- default workflows are dry-run only and do not mutate workloads.
+- `EXECUTION_ENABLED=false` by default blocks real execution.
+- denied namespaces include `kube-system`, `monitoring`, `cascade-system`, `default`, and storage/system namespaces.
+- agent tools are read-only; agents cannot approve or execute remediation.
+
+`PHASE 8 ACCEPTANCE: PASS` means safe plans can be generated, unsafe plans are rejected, approvals are stored, dry-run execution records are persisted with `executed=false`, real execution is blocked by default, and `remediation.actions` exists for lifecycle events.
+
+## Normal Phase 9 Workflow
+
+Use these after Phase 8 is available:
+
+```powershell
+.\scripts\deploy-phase-9.ps1
+.\scripts\accept-phase-9.ps1
+.\scripts\demo-phase-9.ps1
+.\scripts\debug-phase-9.ps1
+```
+
+- `deploy-phase-9.ps1`: builds the React command center and FastAPI BFF images, loads them into kind, deploys `command-center-api` and `command-center`, and waits for rollouts.
+- `accept-phase-9.ps1`: final Phase 9 acceptance gate. It verifies Phase 8 baseline resources, UI deployments/endpoints, static assets, API proxy routes, safe investigation/remediation/chaos dry-run actions, and frontend build.
+- `demo-phase-9.ps1`: port-forwards the UI, prints API health/counts, optionally runs a safe investigation and remediation dry-run demo, and prints browser routes.
+- `reset-phase-9.ps1`: deletes and redeploys only Phase 9 resources. It does not delete Phase 1-8 services, Online Boutique, Redpanda, ClickHouse, or Qdrant.
+- `debug-phase-9.ps1`: non-destructive diagnostics for command-center resources, logs, health endpoints, API samples, and local port-forward instructions.
+
+Local UI access:
+
+```powershell
+kubectl port-forward -n cascade-system svc/command-center 18300:8030
+```
+
+Open `http://localhost:18300`.
+
+Phase 9 safety boundaries:
+
+- the UI calls real Cascade APIs through `/api/*`.
+- real remediation execution is disabled by default and blocked by the BFF.
+- real chaos execution controls are not exposed by default.
+- supported mutations are safe operator workflows: investigations, plan creation, approval/rejection records, and dry-run validation.
+
+`PHASE 9 ACCEPTANCE: PASS` means the browser entrypoint, API proxy, dashboard data, health checks, safe investigation creation, chaos dry-run planning/execution, remediation plan/approval/dry-run workflow, and frontend build are working.
+
 ## Legacy And Recovery Scripts
 
 These are intentionally kept because they are useful when the local kind cluster needs recovery or focused regression checks:
@@ -144,6 +207,8 @@ These are intentionally kept because they are useful when the local kind cluster
 - `debug-phase-5.ps1`: current Phase 5 diagnostics; prefer this for knowledge ingestion or retrieval issues.
 - `debug-phase-6.ps1`: current Phase 6 diagnostics; prefer this for agent runtime or tool gateway issues.
 - `debug-phase-7.ps1`: current Phase 7 diagnostics; prefer this for chaos planning, execution, cleanup, or scoring issues.
+- `debug-phase-8.ps1`: current Phase 8 diagnostics; prefer this for remediation plans, approvals, dry-run validation, or safety policy issues.
+- `debug-phase-9.ps1`: current Phase 9 diagnostics; prefer this for command-center UI or API proxy issues.
 
 ## Removed Obsolete Scripts And Docs
 
@@ -160,6 +225,8 @@ Before beginning Phase 7, run the current acceptance gates in order:
 .\scripts\accept-phase-5.ps1
 .\scripts\accept-phase-6.ps1
 .\scripts\accept-phase-7.ps1 -DryRunOnly
+.\scripts\accept-phase-8.ps1
+.\scripts\accept-phase-9.ps1
 ```
 
 Local `.env` files, kubeconfigs, debug outputs, database volumes, generated reports, and model artifacts are intentionally ignored by the root `.gitignore`. Use `.env.example` for safe placeholder configuration only.
@@ -173,3 +240,5 @@ Local `.env` files, kubeconfigs, debug outputs, database volumes, generated repo
 - Phase 5 knowledge issue: run `.\scripts\debug-phase-5.ps1`.
 - Phase 6 agent runtime issue: run `.\scripts\debug-phase-6.ps1`.
 - Phase 7 chaos automation issue: run `.\scripts\debug-phase-7.ps1`.
+- Phase 8 remediation approval issue: run `.\scripts\debug-phase-8.ps1`.
+- Phase 9 command center issue: run `.\scripts\debug-phase-9.ps1`.

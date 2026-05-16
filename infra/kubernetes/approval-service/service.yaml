@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: approval-service
+  namespace: cascade-system
+  labels:
+    app: approval-service
+spec:
+  selector:
+    app: approval-service
+  ports:
+    - name: http
+      port: 8022
+      targetPort: http
+

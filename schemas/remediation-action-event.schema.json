@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cascade Remediation Action Event",
+  "type": "object",
+  "required": ["schema_version", "event_type", "timestamp", "plan_id", "status", "dry_run", "executed"],
+  "properties": {
+    "schema_version": { "const": "phase8.v1" },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "remediation.plan.created",
+        "remediation.plan.rejected",
+        "remediation.approved",
+        "remediation.rejected",
+        "remediation.dry_run.started",
+        "remediation.dry_run.completed",
+        "remediation.execution.started",
+        "remediation.execution.completed",
+        "remediation.execution.failed"
+      ]
+    },
+    "timestamp": { "type": "string" },
+    "plan_id": { "type": "string" },
+    "approval_id": { "type": "string" },
+    "execution_id": { "type": "string" },
+    "trigger_type": { "type": "string" },
+    "trigger_id": { "type": "string" },
+    "service": { "type": "string" },
+    "namespace": { "type": "string" },
+    "action_type": { "type": "string" },
+    "status": { "type": "string" },
+    "dry_run": { "type": "boolean" },
+    "executed": { "type": "boolean" },
+    "summary": { "type": "string" },
+    "evidence_refs": { "type": "array", "items": { "type": "object" } },
+    "safety_findings": { "type": "array", "items": { "type": "string" } },
+    "confidence": { "type": "number" }
+  },
+  "additionalProperties": false
+}

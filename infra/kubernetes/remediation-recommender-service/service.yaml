@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: remediation-recommender-service
+  namespace: cascade-system
+  labels:
+    app: remediation-recommender-service
+spec:
+  selector:
+    app: remediation-recommender-service
+  ports:
+    - name: http
+      port: 8021
+      targetPort: http
+

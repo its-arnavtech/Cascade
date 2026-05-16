@@ -35,6 +35,12 @@ spec:
               value: http://incident-timeline-service.cascade-system.svc.cluster.local:8006
             - name: ANOMALY_DETECTOR_SERVICE_URL
               value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
+            - name: CHAOS_EXECUTOR_SERVICE_URL
+              value: http://chaos-executor-service.cascade-system.svc.cluster.local:8020
+            - name: REMEDIATION_RECOMMENDER_SERVICE_URL
+              value: http://remediation-recommender-service.cascade-system.svc.cluster.local:8021
+            - name: REMEDIATION_EXECUTOR_SERVICE_URL
+              value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
           readinessProbe:
             httpGet:
               path: /ready

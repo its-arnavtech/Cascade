@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: remediation-executor-service
+  namespace: cascade-system
+  labels:
+    app: remediation-executor-service
+spec:
+  selector:
+    app: remediation-executor-service
+  ports:
+    - name: http
+      port: 8023
+      targetPort: http
+
