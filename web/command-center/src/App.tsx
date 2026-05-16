@@ -1,0 +1,31 @@
+import { Route, Routes } from "react-router-dom";
+import { Shell } from "./components/layout/Shell";
+import { AboutPage } from "./pages/AboutPage";
+import { AnomaliesPage } from "./pages/AnomaliesPage";
+import { ChaosPage } from "./pages/ChaosPage";
+import { IncidentsPage } from "./pages/IncidentsPage";
+import { InvestigationsPage } from "./pages/InvestigationsPage";
+import { KnowledgePage } from "./pages/KnowledgePage";
+import { OverviewPage } from "./pages/OverviewPage";
+import { RemediationPage } from "./pages/RemediationPage";
+import { SystemPage } from "./pages/SystemPage";
+import { TelemetryPage } from "./pages/TelemetryPage";
+
+export default function App() {
+  return (
+    <Shell>
+      <Routes>
+        <Route path="/" element={<OverviewPage />} />
+        <Route path="/telemetry" element={<TelemetryPage />} />
+        <Route path="/anomalies" element={<AnomaliesPage />} />
+        <Route path="/incidents" element={<IncidentsPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
+        <Route path="/investigations" element={<InvestigationsPage />} />
+        <Route path="/chaos" element={<ChaosPage />} />
+        <Route path="/remediation" element={<RemediationPage />} />
+        <Route path="/system" element={<SystemPage />} />
+        <Route path="/about" element={<AboutPage />} />
+      </Routes>
+    </Shell>
+  );
+}

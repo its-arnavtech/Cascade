@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: command-center-api
+  namespace: cascade-system
+  labels:
+    app: command-center-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: command-center-api
+  template:
+    metadata:
+      labels:
+        app: command-center-api
+    spec:
+      containers:
+        - name: command-center-api
+          image: cascade-command-center-api:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8031
+          env:
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: KNOWLEDGE_RETRIEVAL_SERVICE_URL
+              value: http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016
+            - name: AGENT_TOOL_GATEWAY_URL
+              value: http://agent-tool-gateway.cascade-system.svc.cluster.local:8017
+            - name: AGENT_ORCHESTRATOR_SERVICE_URL
+              value: http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018
+            - name: CHAOS_PLANNER_SERVICE_URL
+              value: http://chaos-planner-service.cascade-system.svc.cluster.local:8019
+            - name: CHAOS_EXECUTOR_SERVICE_URL
+              value: http://chaos-executor-service.cascade-system.svc.cluster.local:8020
+            - name: REMEDIATION_RECOMMENDER_SERVICE_URL
+              value: http://remediation-recommender-service.cascade-system.svc.cluster.local:8021
+            - name: APPROVAL_SERVICE_URL
+              value: http://approval-service.cascade-system.svc.cluster.local:8022
+            - name: REMEDIATION_EXECUTOR_SERVICE_URL
+              value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
+            - name: ANOMALY_DETECTOR_SERVICE_URL
+              value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
+            - name: FEATURE_EXTRACTOR_SERVICE_URL
+              value: http://feature-extractor-service.cascade-system.svc.cluster.local:8013
+            - name: PROXY_TIMEOUT_SECONDS
+              value: "10"
+            - name: ENABLE_DANGEROUS_ACTIONS
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi

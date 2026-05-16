@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     incident_timeline_service_url: str = "http://incident-timeline-service.cascade-system.svc.cluster.local:8006"
     anomaly_detector_service_url: str = "http://anomaly-detector-service.cascade-system.svc.cluster.local:8014"
     chaos_executor_service_url: str = "http://chaos-executor-service.cascade-system.svc.cluster.local:8020"
+    remediation_recommender_service_url: str = "http://remediation-recommender-service.cascade-system.svc.cluster.local:8021"
+    remediation_executor_service_url: str = "http://remediation-executor-service.cascade-system.svc.cluster.local:8023"
     tool_timeout_seconds: float = 10.0
     max_tool_response_bytes: int = 120000
 
@@ -141,6 +143,8 @@ def _base_url(target: str) -> str:
         "anomaly-detector-service": settings.anomaly_detector_service_url.rstrip("/"),
         "causal-reconstruction-service": settings.causal_reconstruction_service_url.rstrip("/"),
         "chaos-executor-service": settings.chaos_executor_service_url.rstrip("/"),
+        "remediation-recommender-service": settings.remediation_recommender_service_url.rstrip("/"),
+        "remediation-executor-service": settings.remediation_executor_service_url.rstrip("/"),
     }[target]
 
 

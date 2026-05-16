@@ -270,6 +270,62 @@ class ClickHouseClient:
                 stats[table] = None
         return stats
 
+    async def insert_remediation_plan(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_plans", [row])
+
+    async def recent_remediation_plans(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"service": service, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_plans {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
+
+    async def remediation_plan(self, plan_id: str) -> dict[str, Any] | None:
+        safe = self._quote(plan_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_plans WHERE plan_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def insert_remediation_approval(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_approvals", [row])
+
+    async def recent_remediation_approvals(self, limit: int = 20, plan_id: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"plan_id": plan_id})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_approvals {where} ORDER BY decided_at DESC LIMIT {self._limit(limit)}")
+
+    async def remediation_approval(self, approval_id: str) -> dict[str, Any] | None:
+        safe = self._quote(approval_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_approvals WHERE approval_id = {safe} ORDER BY decided_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def latest_remediation_approval(self, plan_id: str) -> dict[str, Any] | None:
+        safe = self._quote(plan_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_approvals WHERE plan_id = {safe} ORDER BY decided_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def insert_remediation_execution(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_executions", [row])
+
+    async def recent_remediation_executions(self, limit: int = 20, plan_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"plan_id": plan_id, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_executions {where} ORDER BY started_at DESC LIMIT {self._limit(limit)}")
+
+    async def remediation_execution(self, execution_id: str) -> dict[str, Any] | None:
+        safe = self._quote(execution_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_executions WHERE execution_id = {safe} ORDER BY started_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def insert_remediation_safety_violation(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_safety_violations", [row])
+
+    async def insert_remediation_policy_audit(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_policy_audit", [row])
+
+    async def remediation_stats(self) -> dict[str, int | None]:
+        stats: dict[str, int | None] = {}
+        for table in ["remediation_plans", "remediation_approvals", "remediation_executions", "remediation_safety_violations", "remediation_policy_audit"]:
+            try:
+                stats[table] = await self.count(table)
+            except Exception:
+                stats[table] = None
+        return stats
+
     @staticmethod
     def json_dumps(value: Any) -> str:
         return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
@@ -730,5 +786,100 @@ CREATE TABLE IF NOT EXISTS {db}.chaos_safety_violations (
     request_json String
 ) ENGINE = MergeTree
 ORDER BY (created_at, violation_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_plans (
+    plan_id String,
+    created_at DateTime64(3),
+    updated_at DateTime64(3),
+    status String,
+    trigger_type String,
+    trigger_id String,
+    source_investigation_id String,
+    source_anomaly_id String,
+    source_incident_id String,
+    source_chaos_run_id String,
+    service String,
+    namespace String,
+    severity String,
+    risk_score Float64,
+    confidence Float64,
+    action_type String,
+    action_summary String,
+    remediation_steps_json String,
+    rollback_steps_json String,
+    evidence_refs_json String,
+    safety_findings_json String,
+    dry_run_manifest_json String,
+    plan_json String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (created_at, plan_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_approvals (
+    approval_id String,
+    plan_id String,
+    decided_at DateTime64(3),
+    decision String,
+    approver String,
+    approver_role String,
+    reason String,
+    expires_at Nullable(DateTime64(3)),
+    approval_metadata_json String
+) ENGINE = MergeTree
+ORDER BY (plan_id, decided_at, approval_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_executions (
+    execution_id String,
+    plan_id String,
+    approval_id String,
+    started_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    status String,
+    dry_run UInt8,
+    executed UInt8,
+    action_type String,
+    namespace String,
+    service String,
+    resource_kind String,
+    resource_name String,
+    validation_status String,
+    execution_status String,
+    rollback_available UInt8,
+    output_summary String,
+    error_message String,
+    execution_json String
+) ENGINE = ReplacingMergeTree(started_at)
+ORDER BY (started_at, execution_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_safety_violations (
+    violation_id String,
+    created_at DateTime64(3),
+    plan_id String,
+    execution_id String,
+    violation_type String,
+    severity String,
+    message String,
+    policy_json String,
+    request_json String
+) ENGINE = MergeTree
+ORDER BY (created_at, violation_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_policy_audit (
+    audit_id String,
+    checked_at DateTime64(3),
+    plan_id String,
+    action_type String,
+    namespace String,
+    service String,
+    allowed UInt8,
+    risk_level String,
+    findings_json String,
+    policy_json String
+) ENGINE = MergeTree
+ORDER BY (checked_at, audit_id)
 """,
     ]

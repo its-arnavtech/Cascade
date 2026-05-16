@@ -382,4 +382,84 @@ spec:
                   policy_json String,
                   request_json String
               ) ENGINE = MergeTree ORDER BY (created_at, violation_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_plans (
+                  plan_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  status String,
+                  trigger_type String,
+                  trigger_id String,
+                  source_investigation_id String,
+                  source_anomaly_id String,
+                  source_incident_id String,
+                  source_chaos_run_id String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  risk_score Float64,
+                  confidence Float64,
+                  action_type String,
+                  action_summary String,
+                  remediation_steps_json String,
+                  rollback_steps_json String,
+                  evidence_refs_json String,
+                  safety_findings_json String,
+                  dry_run_manifest_json String,
+                  plan_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (created_at, plan_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_approvals (
+                  approval_id String,
+                  plan_id String,
+                  decided_at DateTime64(3),
+                  decision String,
+                  approver String,
+                  approver_role String,
+                  reason String,
+                  expires_at Nullable(DateTime64(3)),
+                  approval_metadata_json String
+              ) ENGINE = MergeTree ORDER BY (plan_id, decided_at, approval_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_executions (
+                  execution_id String,
+                  plan_id String,
+                  approval_id String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  dry_run UInt8,
+                  executed UInt8,
+                  action_type String,
+                  namespace String,
+                  service String,
+                  resource_kind String,
+                  resource_name String,
+                  validation_status String,
+                  execution_status String,
+                  rollback_available UInt8,
+                  output_summary String,
+                  error_message String,
+                  execution_json String
+              ) ENGINE = ReplacingMergeTree(started_at) ORDER BY (started_at, execution_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_safety_violations (
+                  violation_id String,
+                  created_at DateTime64(3),
+                  plan_id String,
+                  execution_id String,
+                  violation_type String,
+                  severity String,
+                  message String,
+                  policy_json String,
+                  request_json String
+              ) ENGINE = MergeTree ORDER BY (created_at, violation_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_policy_audit (
+                  audit_id String,
+                  checked_at DateTime64(3),
+                  plan_id String,
+                  action_type String,
+                  namespace String,
+                  service String,
+                  allowed UInt8,
+                  risk_level String,
+                  findings_json String,
+                  policy_json String
+              ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
               SQL

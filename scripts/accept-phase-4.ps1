@@ -5,6 +5,7 @@ $Passed = New-Object System.Collections.Generic.List[string]
 $Failed = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
 $PortForwards = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+. "$PSScriptRoot\lib\kafka-topics.ps1"
 
 function Write-Section { param([string]$Title) Write-Host ""; Write-Host "============================================================"; Write-Host $Title; Write-Host "============================================================" }
 function Add-Pass { param([string]$Message) $script:Passed.Add($Message) | Out-Null; Write-Host "PASS: $Message" }
@@ -29,8 +30,14 @@ try {
     if ([int](CH "SELECT count() FROM cascade.telemetry_events") -gt 0) { Add-Pass "telemetry_events has rows" } else { Add-Fail "telemetry_events empty" }
     if ([int](CH "SELECT count() FROM cascade.experiment_events") -gt 0) { Add-Pass "experiment_events has rows" } else { Add-Fail "experiment_events empty" }
     $rpPod = (Invoke-Kubectl @("-n", $Namespace, "get", "pod", "-l", "app=redpanda", "-o", "jsonpath={.items[0].metadata.name}")).Text.Trim()
-    $topics = (Invoke-Kubectl @("-n", $Namespace, "exec", $rpPod, "--", "rpk", "-X", "brokers=localhost:9092", "topic", "list")).Text
-    foreach ($topic in @("telemetry.raw", "telemetry.enriched", "experiments.events", "anomalies.detected")) { if ($topics -match [regex]::Escape($topic)) { Add-Pass "Topic $topic exists" } else { Add-Fail "Topic $topic missing" } }
+    foreach ($topic in @("telemetry.raw", "telemetry.enriched", "experiments.events", "anomalies.detected")) {
+        $topicCheck = Test-CascadeRedpandaTopic -Namespace $Namespace -Topic $topic
+        if ($topicCheck.Exists) {
+            Add-Pass "Topic $topic exists"
+        } else {
+            Add-Fail "Topic $topic missing. Raw topic list: $($topicCheck.Raw)"
+        }
+    }
 
     Start-PF "feature-extractor-service" "8013:8013"
     try {

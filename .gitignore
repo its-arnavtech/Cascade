@@ -83,6 +83,12 @@ pnpm-debug.log*
 .next/
 out/
 coverage/
+*.tsbuildinfo
+web/command-center/node_modules/
+web/command-center/dist/
+web/command-center/.env
+web/command-center/.vite/
+web/command-center/coverage/
 
 # Docker / local containers
 .docker/

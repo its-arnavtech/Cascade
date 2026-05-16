@@ -39,7 +39,11 @@ TOOL_REGISTRY: dict[str, ToolContract] = {
     "get_chaos_run": ToolContract("get_chaos_run", "Fetch one Phase 7 chaos run detail.", "chaos-executor-service", "GET", "/runs/{run_id}"),
     "get_recent_resilience_scores": ToolContract("get_recent_resilience_scores", "Fetch recent resilience scores.", "chaos-executor-service", "GET", "/scores/recent"),
     "get_safety_policy": ToolContract("get_safety_policy", "Fetch active chaos safety policy.", "chaos-executor-service", "GET", "/safety/policy"),
+    "get_recent_remediation_plans": ToolContract("get_recent_remediation_plans", "Fetch recent Phase 8 remediation plans.", "remediation-recommender-service", "GET", "/plans"),
+    "get_remediation_plan": ToolContract("get_remediation_plan", "Fetch one Phase 8 remediation plan.", "remediation-recommender-service", "GET", "/plans/{plan_id}"),
+    "get_recent_remediation_executions": ToolContract("get_recent_remediation_executions", "Fetch recent Phase 8 remediation dry-run/execution records.", "remediation-executor-service", "GET", "/executions"),
+    "get_remediation_safety_policy": ToolContract("get_remediation_safety_policy", "Fetch active remediation safety policy.", "remediation-executor-service", "GET", "/safety/policy"),
 }
 
 
-MUTATING_TOOL_NAMES = {"restart_deployment", "scale_deployment", "delete_pod", "apply_chaos", "patch_resource", "execute_remediation"}
+MUTATING_TOOL_NAMES = {"restart_deployment", "scale_deployment", "delete_pod", "apply_chaos", "patch_resource", "execute_remediation", "approve_remediation", "reject_remediation"}

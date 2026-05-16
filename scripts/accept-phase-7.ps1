@@ -11,6 +11,7 @@ $Passed = New-Object System.Collections.Generic.List[string]
 $Failed = New-Object System.Collections.Generic.List[string]
 $Warnings = New-Object System.Collections.Generic.List[string]
 $PortForwards = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
+. "$PSScriptRoot\lib\kafka-topics.ps1"
 
 function Write-Section { param([string]$Title) Write-Host ""; Write-Host "============================================================"; Write-Host $Title; Write-Host "============================================================" }
 function Add-Pass { param([string]$Message) $script:Passed.Add($Message) | Out-Null; Write-Host "PASS: $Message" }
@@ -35,9 +36,9 @@ try {
         if ($tables -match "(?m)^$t$") { Add-Pass "ClickHouse table $t exists" } else { Add-Fail "ClickHouse table $t missing" }
     }
 
-    $topicText = (Invoke-Kubectl @("-n", $Namespace, "exec", "deployment/redpanda", "--", "rpk", "topic", "list")).Text
     foreach ($topic in @("agent.investigations", "chaos.experiments")) {
-        if ($topicText -match "(?m)^$([regex]::Escape($topic))\s") { Add-Pass "$topic topic exists" } else { Add-Fail "$topic topic missing" }
+        $topicCheck = Test-CascadeRedpandaTopic -Namespace $Namespace -Topic $topic
+        if ($topicCheck.Exists) { Add-Pass "$topic topic exists" } else { Add-Fail "$topic topic missing. Raw topic list: $($topicCheck.Raw)" }
     }
     foreach ($crd in @("podchaos.chaos-mesh.org", "networkchaos.chaos-mesh.org", "stresschaos.chaos-mesh.org")) {
         $r = Invoke-Kubectl @("get", "crd", $crd)
