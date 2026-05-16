@@ -40,7 +40,7 @@ foreach ($file in $tracked) {
                     $reason = "placeholder assignment"
                 }
             }
-            if ($line -match "BEGIN (RSA|OPENSSH|DSA|EC) PRIVATE KEY") {
+            if ($line -match "-----BEGIN (RSA|OPENSSH|DSA|EC) PRIVATE KEY-----") {
                 $highConfidence = $true
                 $reason = "private key block"
             }

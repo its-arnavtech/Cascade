@@ -66,6 +66,14 @@ Then browse to `http://localhost:18300`.
 
 This runs Phase 2 through Phase 9 acceptance and writes logs under `run-output/`.
 
+GitHub Actions validation runs on pull requests to `main`, pushes to `main`, and manual dispatch. It checks Python, PowerShell, frontend, Kubernetes YAML, secret hygiene, and representative Docker builds without deploying anywhere. See `docs/operations/ci-cd.md`.
+
+Local pre-push CI mirror:
+
+```powershell
+pwsh ./scripts/ci-local.ps1 -SkipDockerBuild
+```
+
 Useful targeted commands:
 
 ```powershell

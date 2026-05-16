@@ -251,11 +251,13 @@ Local `.env` files, kubeconfigs, debug outputs, database volumes, generated repo
 - `ensure-redpanda-topics.ps1`: idempotently ensures the required Cascade Redpanda topics exist.
 - `backup-clickhouse.ps1`, `list-clickhouse-backups.ps1`, `restore-clickhouse.ps1`: local ClickHouse backup/list/restore helpers. Restore is dry-run by default and requires `-ConfirmRestore`.
 - `backup-qdrant.ps1`, `list-qdrant-backups.ps1`, `restore-qdrant.ps1`: local Qdrant snapshot/list/restore helpers. Restore is dry-run by default and requires `-ConfirmRestore`.
+- `ci-local.ps1`: runs the main CI validation checks locally before pushing, without requiring Kubernetes by default.
 
 Safe flags and defaults:
 
 - `-DryRunOnly` keeps Phase 7 validation from creating real chaos.
 - `-NoBrowser` keeps demo scripts from opening a browser.
 - `-ConfirmRestore` is required for restore mutation.
+- `-SkipDockerBuild` skips local Docker smoke builds in `ci-local.ps1`.
 - Real remediation execution remains disabled by default through `EXECUTION_ENABLED=false`.
 - Real chaos and real remediation routes remain blocked through the Command Center proxy unless explicitly reconfigured.

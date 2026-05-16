@@ -1,0 +1,260 @@
+name: Cascade CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  repo-hygiene:
+    name: Repo hygiene and secret audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify required files
+        shell: pwsh
+        run: |
+          $required = @(
+            "README.md",
+            ".env.example",
+            ".gitignore",
+            "scripts/accept-all.ps1",
+            "scripts/audit-secrets.ps1",
+            "web/command-center/package.json",
+            "services/command-center-api/app/main.py"
+          )
+          $missing = @($required | Where-Object { -not (Test-Path $_) })
+          if ($missing.Count -gt 0) {
+            Write-Error "Missing required files: $($missing -join ', ')"
+            exit 1
+          }
+
+      - name: Verify generated and sensitive paths are not tracked
+        shell: bash
+        run: |
+          set -euo pipefail
+          tracked="$(git ls-files backups support-bundles run-output .env || true)"
+          if [ -n "$tracked" ]; then
+            echo "Generated or sensitive paths are tracked:"
+            echo "$tracked"
+            exit 1
+          fi
+
+      - name: Run secret audit
+        shell: pwsh
+        run: ./scripts/audit-secrets.ps1
+
+      - name: Git diagnostics
+        shell: bash
+        run: git status --short
+
+  python-tests:
+    name: Python tests, compile, and Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install pytest ruff
+          while IFS= read -r req; do
+            echo "Installing $req"
+            python -m pip install -r "$req"
+          done < <(find services -mindepth 2 -maxdepth 2 -name requirements.txt | sort)
+
+      - name: Compile services and tests
+        run: python -m compileall services tests
+
+      - name: Run tests
+        run: python -m pytest tests
+
+      - name: Ruff
+        run: python -m ruff check services tests
+
+  frontend-build:
+    name: Command Center frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/command-center
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/command-center/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  powershell-parse:
+    name: PowerShell parser checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              Write-Error "PowerShell parse errors in $($_.FullName): $($errors | Out-String)"
+              exit 1
+            }
+          }
+
+  k8s-manifest-validate:
+    name: Kubernetes manifest YAML validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install YAML parser
+        run: python -m pip install --upgrade pip pyyaml
+
+      - name: Parse Kubernetes YAML
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          import yaml
+
+          paths = sorted(Path("infra/kubernetes").glob("**/*.yaml"))
+          if not paths:
+              print("No Kubernetes YAML files found", file=sys.stderr)
+              sys.exit(1)
+
+          failures = []
+          for path in paths:
+              try:
+                  docs = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
+              except Exception as exc:
+                  failures.append(f"{path}: YAML parse failed: {exc}")
+                  continue
+              for index, doc in enumerate(docs, start=1):
+                  if doc is None:
+                      continue
+                  if not isinstance(doc, dict):
+                      failures.append(f"{path} document {index}: expected mapping")
+                      continue
+                  for field in ("apiVersion", "kind", "metadata"):
+                      if field not in doc:
+                          failures.append(f"{path} document {index}: missing {field}")
+                  metadata = doc.get("metadata")
+                  if isinstance(metadata, dict) and not metadata.get("name"):
+                      failures.append(f"{path} document {index}: missing metadata.name")
+
+          if failures:
+              print("\n".join(failures), file=sys.stderr)
+              sys.exit(1)
+          print(f"Validated {len(paths)} Kubernetes YAML files")
+          PY
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: kubectl client dry-run for core manifests
+        run: |
+          set -euo pipefail
+          kubectl apply --dry-run=client --validate=false \
+            -f infra/kubernetes/command-center-api \
+            -f infra/kubernetes/command-center \
+            -f infra/kubernetes/redpanda \
+            -f infra/kubernetes/clickhouse \
+            -f infra/kubernetes/qdrant
+
+  docker-build-smoke:
+    name: Docker build smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build representative images
+        shell: bash
+        run: |
+          set -euo pipefail
+          export DOCKER_BUILDKIT=1
+          docker build -f services/command-center-api/Dockerfile -t cascade-ci/command-center-api:test .
+          docker build -f web/command-center/Dockerfile -t cascade-ci/command-center:test .
+          docker build -f services/retrieval-service/Dockerfile -t cascade-ci/retrieval-service:test .
+          docker build -f services/agent-orchestrator-service/Dockerfile -t cascade-ci/agent-orchestrator-service:test .
+          docker build -f services/remediation-recommender-service/Dockerfile -t cascade-ci/remediation-recommender-service:test .
+
+  ci-summary:
+    name: CI summary
+    runs-on: ubuntu-latest
+    needs:
+      - repo-hygiene
+      - python-tests
+      - frontend-build
+      - powershell-parse
+      - k8s-manifest-validate
+      - docker-build-smoke
+    if: always()
+    steps:
+      - name: Print summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "repo-hygiene: ${{ needs.repo-hygiene.result }}"
+          echo "python-tests: ${{ needs.python-tests.result }}"
+          echo "frontend-build: ${{ needs.frontend-build.result }}"
+          echo "powershell-parse: ${{ needs.powershell-parse.result }}"
+          echo "k8s-manifest-validate: ${{ needs.k8s-manifest-validate.result }}"
+          echo "docker-build-smoke: ${{ needs.docker-build-smoke.result }}"
+          if [ "${{ needs.repo-hygiene.result }}" != "success" ] ||
+             [ "${{ needs.python-tests.result }}" != "success" ] ||
+             [ "${{ needs.frontend-build.result }}" != "success" ] ||
+             [ "${{ needs.powershell-parse.result }}" != "success" ] ||
+             [ "${{ needs.k8s-manifest-validate.result }}" != "success" ] ||
+             [ "${{ needs.docker-build-smoke.result }}" != "success" ]; then
+            exit 1
+          fi
+          echo "Cascade CI validation passed."
