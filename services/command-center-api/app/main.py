@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger("command-center-api")
@@ -26,12 +29,44 @@ class Settings(BaseSettings):
     feature_extractor_service_url: str = "http://feature-extractor-service.cascade-system.svc.cluster.local:8013"
     proxy_timeout_seconds: float = 10.0
     enable_dangerous_actions: bool = False
+    rate_limit_enabled: bool = True
+    rate_limit_requests_per_minute: int = 120
+    rate_limit_burst: int = 60
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
 
 settings = Settings()
 app = FastAPI(title="Cascade Command Center API", version="0.1.0")
+
+
+@dataclass
+class InMemoryRateLimiter:
+    requests_per_minute: int
+    burst: int
+    buckets: dict[str, list[float]] = field(default_factory=dict)
+
+    def allow(self, key: str, now: float | None = None) -> tuple[bool, int]:
+        current = time.monotonic() if now is None else now
+        cutoff = current - 60.0
+        bucket = [ts for ts in self.buckets.get(key, []) if ts > cutoff]
+        limit = max(1, self.requests_per_minute + max(0, self.burst))
+        remaining = max(0, limit - len(bucket))
+        if len(bucket) >= limit:
+            self.buckets[key] = bucket
+            return False, 0
+        bucket.append(current)
+        self.buckets[key] = bucket
+        return True, max(0, remaining - 1)
+
+    def reset(self) -> None:
+        self.buckets.clear()
+
+
+rate_limiter = InMemoryRateLimiter(
+    requests_per_minute=settings.rate_limit_requests_per_minute,
+    burst=settings.rate_limit_burst,
+)
 
 ROUTES: dict[str, str] = {
     "retrieval": settings.retrieval_service_url,
@@ -58,6 +93,31 @@ SAFE_POST_PATHS = {
     ("remediation/approval", "approvals"),
     ("remediation/executor", "executions/dry-run"),
 }
+
+
+@app.middleware("http")
+async def apply_rate_limit(request: Request, call_next):
+    if not settings.rate_limit_enabled or request.url.path in {"/health", "/ready"}:
+        return await call_next(request)
+
+    rate_limiter.requests_per_minute = settings.rate_limit_requests_per_minute
+    rate_limiter.burst = settings.rate_limit_burst
+    allowed, remaining = rate_limiter.allow(_client_key(request))
+    if not allowed:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content={
+                "detail": "Command Center API rate limit exceeded",
+                "retry_after_seconds": 60,
+                "limit": settings.rate_limit_requests_per_minute,
+                "burst": settings.rate_limit_burst,
+            },
+            headers={"Retry-After": "60", "X-RateLimit-Remaining": "0"},
+        )
+
+    response = await call_next(request)
+    response.headers["X-RateLimit-Remaining"] = str(remaining)
+    return response
 
 
 @app.get("/health")
@@ -154,6 +214,15 @@ def _forward_headers(headers: Mapping[str, str]) -> dict[str, str]:
         if key in headers:
             allowed[key] = headers[key]
     return allowed
+
+
+def _client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 async def _check(client: httpx.AsyncClient, base_url: str) -> bool:

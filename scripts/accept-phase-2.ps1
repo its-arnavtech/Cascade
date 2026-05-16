@@ -16,6 +16,7 @@ $Experiment = $null
 $Incident = $null
 $Impact = $null
 $Report = $null
+. "$PSScriptRoot\lib\kafka-topics.ps1"
 
 function Write-Section { param([string]$Title) Write-Host ""; Write-Host "============================================================"; Write-Host $Title; Write-Host "============================================================" }
 function Add-Pass { param([string]$Message) $script:Passed.Add($Message) | Out-Null; Write-Host "PASS: $Message" }
@@ -62,7 +63,10 @@ try {
     foreach($pair in @(@("observation-service","app=observation-service"),@("stream-enricher","app=stream-enricher"),@("experiment-tracker-service","app=experiment-tracker-service"),@("topology-service","app=topology-service"),@("causal-reconstruction-service","app=causal-reconstruction-service"),@("incident-timeline-service","app=incident-timeline-service"))){ Test-PodLabel $pair[0] $pair[1] }
 
     $endpointIp=(Invoke-Kubectl @("-n",$Namespace,"get","endpoints","redpanda","-o","jsonpath={.subsets[0].addresses[0].ip}")).Text.Trim(); if(-not [string]::IsNullOrWhiteSpace($endpointIp)){Add-Pass "Redpanda service has endpoints"}else{Add-Fail "Redpanda service has no endpoints"}
-    $topics=Invoke-Rpk -Arguments @("topic","list"); foreach($t in @("telemetry.raw","telemetry.enriched","experiments.events")){ if($topics.Text -match [regex]::Escape($t)){Add-Pass "Topic $t exists"}else{Add-Fail "Topic $t missing"} }
+    foreach($t in @("telemetry.raw","telemetry.enriched","experiments.events")){
+        $topicCheck = Test-CascadeRedpandaTopic -Namespace $Namespace -Topic $t
+        if($topicCheck.Exists){Add-Pass "Topic $t exists"}else{Add-Fail "Topic $t missing. Raw topic list: $($topicCheck.Raw)"}
+    }
 
     Start-PortForward "observation-service" "8000:8000"; try { $h=Invoke-HttpJson GET "http://localhost:8000/health"; if($h.status -eq "ok"){Add-Pass "observation-service /health works"}else{Add-Fail "observation-service /health failed"}; $raw=Invoke-HttpJson GET "http://localhost:8000/metrics/raw?query=up" $null 15; if($null -ne $raw.prometheus){Add-Pass "Prometheus reachable through observation-service"}else{Add-Fail "Prometheus raw query failed"}; $snap=Invoke-HttpJson GET "http://localhost:8000/snapshot" $null 20; if($snap.namespace -eq "cascade-targets"){Add-Pass "observation-service /snapshot works"}else{Add-Fail "observation-service /snapshot failed"} } finally { Stop-PortForwards }
     Test-Health "stream-enricher" 8001

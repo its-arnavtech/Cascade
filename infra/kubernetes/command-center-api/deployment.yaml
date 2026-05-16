@@ -49,6 +49,12 @@ spec:
               value: "10"
             - name: ENABLE_DANGEROUS_ACTIONS
               value: "false"
+            - name: RATE_LIMIT_ENABLED
+              value: "true"
+            - name: RATE_LIMIT_REQUESTS_PER_MINUTE
+              value: "120"
+            - name: RATE_LIMIT_BURST
+              value: "60"
           readinessProbe:
             httpGet:
               path: /health

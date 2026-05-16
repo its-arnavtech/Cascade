@@ -66,3 +66,30 @@ def test_safe_create_routes_not_blocked_by_safety_gate(monkeypatch: pytest.Monke
 def test_real_chaos_run_blocked_by_default() -> None:
     response = client.post("/api/chaos/executor/runs", json={"dry_run": False, "approved": True})
     assert response.status_code == 403
+
+
+def test_rate_limiter_blocks_after_configured_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    module.rate_limiter.reset()
+    monkeypatch.setattr(module.settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(module.settings, "rate_limit_requests_per_minute", 1)
+    monkeypatch.setattr(module.settings, "rate_limit_burst", 0)
+
+    first = client.get("/api/not-a-service/health", headers={"X-Forwarded-For": "198.51.100.10"})
+    second = client.get("/api/not-a-service/health", headers={"X-Forwarded-For": "198.51.100.10"})
+
+    assert first.status_code == 404
+    assert second.status_code == 429
+    assert second.json()["detail"] == "Command Center API rate limit exceeded"
+    module.rate_limiter.reset()
+
+
+def test_rate_limiter_exempts_health_and_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    module.rate_limiter.reset()
+    monkeypatch.setattr(module.settings, "rate_limit_enabled", True)
+    monkeypatch.setattr(module.settings, "rate_limit_requests_per_minute", 1)
+    monkeypatch.setattr(module.settings, "rate_limit_burst", 0)
+
+    for _ in range(3):
+        assert client.get("/health").status_code == 200
+
+    module.rate_limiter.reset()
