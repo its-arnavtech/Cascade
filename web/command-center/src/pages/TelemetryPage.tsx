@@ -22,10 +22,10 @@ export function TelemetryPage() {
     <div className="page">
       <div className="page-heading"><div><h2>Telemetry / Events</h2><p>Recent enriched telemetry and feature windows from ClickHouse.</p></div></div>
       <div className="filters">
-        <input placeholder="service" value={service} onChange={(e) => setService(e.target.value)} />
-        <input placeholder="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} />
-        <input placeholder="event type" value={eventType} onChange={(e) => setEventType(e.target.value)} />
-        <input type="number" min={1} max={100} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+        <label className="form-field">Service<input placeholder="service" value={service} onChange={(e) => setService(e.target.value)} /></label>
+        <label className="form-field">Namespace<input placeholder="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} /></label>
+        <label className="form-field">Event type<input placeholder="event type" value={eventType} onChange={(e) => setEventType(e.target.value)} /></label>
+        <label className="form-field">Limit<input type="number" min={1} max={100} value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></label>
       </div>
       <div className="grid two">
         <StatusPanel title="Event Count By Service" loading={events.isLoading} error={events.error}><MiniBars values={bars} /></StatusPanel>

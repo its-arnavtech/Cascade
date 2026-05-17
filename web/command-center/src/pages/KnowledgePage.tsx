@@ -29,10 +29,10 @@ export function KnowledgePage() {
         <StatCard label="Qdrant Points" value={String(stats.data?.qdrant_knowledge_points ?? "-")} />
       </div>
       <form className="form-row" onSubmit={submit}>
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search query" />
-        <input value={service} onChange={(e) => setService(e.target.value)} placeholder="service filter" />
-        <input value={phase} onChange={(e) => setPhase(e.target.value)} placeholder="phase filter" />
-        <button type="submit">Search</button>
+        <label className="form-field">Query<input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search query" /></label>
+        <label className="form-field">Service<input value={service} onChange={(e) => setService(e.target.value)} placeholder="service filter" /></label>
+        <label className="form-field">Phase<input value={phase} onChange={(e) => setPhase(e.target.value)} placeholder="phase filter" /></label>
+        <button className="btn btn-primary" type="submit">Search</button>
       </form>
       <StatusPanel title="Search Results" loading={search.isPending} error={search.error}>
         <DataTable rows={search.data?.results ?? []} columns={[{ key: "score", label: "Score" }, { key: "title", label: "Title" }, { key: "source_type", label: "Source" }, { key: "source_path", label: "Path" }, { key: "chunk_text", label: "Chunk" }]} />

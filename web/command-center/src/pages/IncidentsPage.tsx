@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCreateInvestigation, useCreateRemediationPlan, useIncident, useIncidents } from "../api/hooks";
+import { Badge } from "../components/Badge";
 import { JsonBlock } from "../components/JsonBlock";
 import { StatusPanel } from "../components/cards/StatusPanel";
 import { DataTable } from "../components/tables/DataTable";
@@ -21,17 +22,17 @@ export function IncidentsPage() {
             { key: "started_at", label: "Started" },
             { key: "title", label: "Title" },
             { key: "service", label: "Service" },
-            { key: "severity", label: "Severity" },
-            { key: "action", label: "Open", render: (row) => <button onClick={() => setSelected(String(row.incident_id ?? ""))}>View</button> },
+            { key: "severity", label: "Severity", render: (row) => <Badge tone={severityTone(row.severity)}>{String(row.severity ?? "-")}</Badge> },
+            { key: "action", label: "Open", render: (row) => <button className="btn" onClick={() => setSelected(String(row.incident_id ?? ""))}>View</button> },
           ]}
         />
       </StatusPanel>
       <StatusPanel title="Incident Detail / Report" loading={detail.isLoading} error={detail.error}>
         {selected ? (
           <>
-            <div className="quick-actions">
-              <button onClick={() => createInvestigation.mutate({ trigger_type: "incident", trigger_id: selected, namespace: "cascade-targets", objective: `Investigate incident ${selected}`, mode: "deterministic", max_steps: 12 })}>Start investigation</button>
-              <button onClick={() => createPlan.mutate({ trigger_type: "incident", trigger_id: selected, service: "", namespace: "cascade-targets", objective: `Create safe remediation plan for incident ${selected}`, preferred_action_type: "investigate_only" })}>Create remediation plan</button>
+            <div className="form-row">
+              <button className="btn btn-primary" onClick={() => createInvestigation.mutate({ trigger_type: "incident", trigger_id: selected, namespace: "cascade-targets", objective: `Investigate incident ${selected}`, mode: "deterministic", max_steps: 12 })}>Start investigation</button>
+              <button className="btn btn-dry" onClick={() => createPlan.mutate({ trigger_type: "incident", trigger_id: selected, service: "", namespace: "cascade-targets", objective: `Create safe remediation plan for incident ${selected}`, preferred_action_type: "investigate_only" })}>Create remediation plan</button>
             </div>
             <JsonBlock value={detail.data} />
           </>
@@ -41,4 +42,12 @@ export function IncidentsPage() {
       </StatusPanel>
     </div>
   );
+}
+
+function severityTone(value: unknown): "good" | "warn" | "bad" | "neutral" {
+  const severity = String(value ?? "").toLowerCase();
+  if (severity.includes("critical") || severity.includes("high")) return "bad";
+  if (severity.includes("medium") || severity.includes("warn")) return "warn";
+  if (severity.includes("low")) return "good";
+  return "neutral";
 }
