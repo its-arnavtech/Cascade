@@ -52,6 +52,16 @@ values.secrets.yaml
 .manifests/
 .kubectl-cache/
 
+# Java / Gradle
+.gradle/
+**/.gradle/
+**/build/
+targets/**/build/
+targets/online-boutique-src/**/build/
+targets/online-boutique-src/**/.gradle/
+targets/online-boutique-src/**/build/reports/
+targets/online-boutique-src/**/build/tmp/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -162,7 +172,8 @@ perf-results/
 loadtest-results/
 
 # IDE / OS
-.vscode/
+!.vscode/
+.vscode/*
 !.vscode/extensions.json
 !.vscode/settings.example.json
 .idea/

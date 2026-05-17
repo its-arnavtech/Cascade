@@ -29,7 +29,7 @@ spec:
                 sleep 5
               done
 
-              for topic in telemetry.raw telemetry.enriched experiments.events; do
+              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments remediation.actions; do
                 /opt/kafka/bin/kafka-topics.sh \
                   --bootstrap-server "${KAFKA_BOOTSTRAP_SERVERS}" \
                   --create \

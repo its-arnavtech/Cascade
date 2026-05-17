@@ -58,6 +58,10 @@ kubectl port-forward -n cascade-system svc/command-center 18300:8030
 
 Then browse to `http://localhost:18300`.
 
+## Demo Target Workload
+
+Cascade is the platform. Online Boutique is the observed demo application under `targets/online-boutique-src/`. It is intentionally kept close to upstream and includes multiple languages, including the Java `adservice`. Generated target build artifacts are ignored, and Cascade demos should not rely on modifying target internals.
+
 ## Full Local Validation
 
 ```powershell

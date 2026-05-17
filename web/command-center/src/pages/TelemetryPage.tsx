@@ -22,10 +22,10 @@ export function TelemetryPage() {
     <div className="page">
       <div className="page-heading"><div><h2>Telemetry / Events</h2><p>Recent enriched telemetry and feature windows from ClickHouse.</p></div></div>
       <div className="filters">
-        <input placeholder="service" value={service} onChange={(e) => setService(e.target.value)} />
-        <input placeholder="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} />
-        <input placeholder="event type" value={eventType} onChange={(e) => setEventType(e.target.value)} />
-        <input type="number" min={1} max={100} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
+        <div className="form-field"><label htmlFor="telemetry-service">Service</label><input id="telemetry-service" placeholder="recommendationservice" value={service} onChange={(e) => setService(e.target.value)} /></div>
+        <div className="form-field"><label htmlFor="telemetry-namespace">Namespace</label><input id="telemetry-namespace" placeholder="cascade-targets" value={namespace} onChange={(e) => setNamespace(e.target.value)} /></div>
+        <div className="form-field"><label htmlFor="telemetry-event-type">Event type</label><input id="telemetry-event-type" placeholder="metric" value={eventType} onChange={(e) => setEventType(e.target.value)} /></div>
+        <div className="form-field"><label htmlFor="telemetry-limit">Limit</label><input id="telemetry-limit" type="number" min={1} max={100} value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
       </div>
       <div className="grid two">
         <StatusPanel title="Event Count By Service" loading={events.isLoading} error={events.error}><MiniBars values={bars} /></StatusPanel>
@@ -34,10 +34,10 @@ export function TelemetryPage() {
         </StatusPanel>
       </div>
       <StatusPanel title="Recent Telemetry Events" loading={events.isLoading} error={events.error}>
-        <DataTable rows={events.data?.events ?? []} columns={[{ key: "timestamp", label: "Time" }, { key: "service", label: "Service" }, { key: "namespace", label: "Namespace" }, { key: "event_type", label: "Type" }, { key: "metric_name", label: "Metric" }, { key: "metric_value", label: "Value" }]} />
+        <DataTable caption="Recent telemetry events" rows={events.data?.events ?? []} columns={[{ key: "timestamp", label: "Time", width: "120px" }, { key: "service", label: "Service", width: "140px" }, { key: "namespace", label: "Namespace", width: "110px" }, { key: "event_type", label: "Type", width: "100px" }, { key: "metric_name", label: "Metric", width: "120px" }, { key: "metric_value", label: "Value" }]} />
       </StatusPanel>
       <StatusPanel title="Feature Windows" loading={features.isLoading} error={features.error}>
-        <DataTable rows={features.data?.features ?? []} columns={[{ key: "window_start", label: "Window" }, { key: "service", label: "Service" }, { key: "event_count", label: "Events" }, { key: "error_count", label: "Errors" }, { key: "latency_p95_ms", label: "p95 ms" }]} />
+        <DataTable caption="Feature windows" rows={features.data?.features ?? []} columns={[{ key: "window_start", label: "Window", width: "130px" }, { key: "service", label: "Service", width: "140px" }, { key: "event_count", label: "Events", width: "80px" }, { key: "error_count", label: "Errors", width: "80px" }, { key: "latency_p95_ms", label: "p95 ms" }]} />
       </StatusPanel>
     </div>
   );

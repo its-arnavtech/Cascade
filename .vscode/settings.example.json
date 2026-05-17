@@ -1,0 +1,17 @@
+{
+  "files.watcherExclude": {
+    "**/.gradle/**": true,
+    "**/build/**": true,
+    "targets/online-boutique-src/**/.gradle/**": true,
+    "targets/online-boutique-src/**/build/**": true
+  },
+  "search.exclude": {
+    "**/.gradle/**": true,
+    "**/build/**": true,
+    "targets/online-boutique-src/**/.gradle/**": true,
+    "targets/online-boutique-src/**/build/reports/**": true,
+    "targets/online-boutique-src/**/build/tmp/**": true
+  },
+  "java.import.gradle.enabled": true,
+  "java.configuration.updateBuildConfiguration": "interactive"
+}

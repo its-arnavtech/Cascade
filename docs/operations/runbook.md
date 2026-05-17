@@ -42,6 +42,16 @@ kubectl port-forward -n cascade-system svc/command-center 18300:8030
 
 Open `http://localhost:18300`.
 
+Online Boutique target workload:
+
+```powershell
+kubectl get pods -n cascade-targets
+kubectl get svc -n cascade-targets
+kubectl port-forward -n cascade-targets svc/frontend 18099:80
+```
+
+Open `http://localhost:18099`. Online Boutique is the observed demo workload, not Cascade product code. Its Java `adservice` exists because upstream Online Boutique uses Java for that service. Generated Gradle/build folders under `targets/online-boutique-src/` are ignored; if editing target code in VS Code, use Java/Gradle extension setup and avoid treating generated reports or class output as source.
+
 Common service forwards:
 
 ```powershell
