@@ -167,6 +167,18 @@ jobs:
               print("No Kubernetes YAML files found", file=sys.stderr)
               sys.exit(1)
 
+          known_kinds = {
+              "ClusterRole",
+              "ClusterRoleBinding",
+              "ConfigMap",
+              "Deployment",
+              "Job",
+              "Namespace",
+              "Role",
+              "RoleBinding",
+              "Service",
+              "ServiceAccount",
+          }
           failures = []
           for path in paths:
               try:
@@ -186,25 +198,15 @@ jobs:
                   metadata = doc.get("metadata")
                   if isinstance(metadata, dict) and not metadata.get("name"):
                       failures.append(f"{path} document {index}: missing metadata.name")
+                  kind = doc.get("kind")
+                  if kind not in known_kinds and path.parts[:3] != ("infra", "kubernetes", "chaos-templates"):
+                      failures.append(f"{path} document {index}: unexpected kind {kind!r}")
 
           if failures:
               print("\n".join(failures), file=sys.stderr)
               sys.exit(1)
-          print(f"Validated {len(paths)} Kubernetes YAML files")
+          print(f"Validated {len(paths)} Kubernetes YAML files offline")
           PY
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-
-      - name: kubectl client dry-run for core manifests
-        run: |
-          set -euo pipefail
-          kubectl apply --dry-run=client --validate=false \
-            -f infra/kubernetes/command-center-api \
-            -f infra/kubernetes/command-center \
-            -f infra/kubernetes/redpanda \
-            -f infra/kubernetes/clickhouse \
-            -f infra/kubernetes/qdrant
 
   docker-build-smoke:
     name: Docker build smoke

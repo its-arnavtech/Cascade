@@ -29,7 +29,7 @@ permissions:
 - `python-tests`: installs service requirements, compiles `services` and `tests`, runs `pytest`, and runs Ruff.
 - `frontend-build`: installs the Command Center dependencies, runs typecheck, and builds the Vite app.
 - `powershell-parse`: parses every `scripts/*.ps1` file with the PowerShell parser.
-- `k8s-manifest-validate`: parses every Kubernetes YAML file and runs client-side dry-run validation for core manifests without contacting a cluster.
+- `k8s-manifest-validate`: parses every Kubernetes YAML file offline and checks required manifest fields/basic known kinds without requiring a cluster.
 - `docker-build-smoke`: builds representative Docker images locally on the runner and does not push them.
 - `ci-summary`: reports job status and fails if any required job failed.
 
