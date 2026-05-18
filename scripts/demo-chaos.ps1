@@ -1,6 +1,6 @@
 param(
     [string]$Namespace = "cascade-system",
-    [string]$TargetService = "recommendationservice",
+    [string]$TargetService = "catalogue",
     [int]$ObservationWindowSeconds = 60,
     [switch]$DryRunOnly,
     [switch]$NoAgent

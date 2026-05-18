@@ -12,7 +12,7 @@ function Invoke-Kubectl { param([string[]]$Arguments) $output = & kubectl @Argum
 function Start-PF { param([string]$Service, [string]$Map) $p = Start-Process kubectl -ArgumentList @("-n", $Namespace, "port-forward", "svc/$Service", $Map) -WindowStyle Hidden -PassThru; $script:PortForwards.Add($p) | Out-Null; Start-Sleep -Seconds 2 }
 function Stop-PF { foreach ($p in $script:PortForwards) { if ($null -ne $p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force } }; $script:PortForwards.Clear() }
 function HttpJson { param([string]$Method, [string]$Url, [object]$Body = $null) if ($null -eq $Body) { Invoke-RestMethod -Method $Method -Uri $Url -TimeoutSec 10 } else { Invoke-RestMethod -Method $Method -Uri $Url -ContentType "application/json" -Body ($Body | ConvertTo-Json -Depth 20) -TimeoutSec 10 } }
-function Cleanup { Stop-PF; if ($script:ChaosApplied) { Invoke-Kubectl @("delete", "-f", "scripts\pod-kill-cartservice.yaml", "--ignore-not-found=true") | Out-Null } }
+function Cleanup { Stop-PF; if ($script:ChaosApplied) { Invoke-Kubectl @("delete", "-f", "scripts\pod-kill-catalogue.yaml", "--ignore-not-found=true") | Out-Null } }
 
 try {
     Write-Section "Telemetry pipeline Demo"
@@ -37,13 +37,13 @@ try {
 
     Write-Section "Create Experiment"
     Start-PF "experiment-tracker-service" "8002:8002"
-    $experiment = HttpJson POST "http://localhost:8002/experiments" @{ experiment_type = "pod-kill"; target_service = "cartservice"; namespace = "cascade-targets"; duration_seconds = 30; chaos_mesh_resource = "kill-cartservice-once" }
+    $experiment = HttpJson POST "http://localhost:8002/experiments" @{ experiment_type = "pod-kill"; target_service = "catalogue"; namespace = "cascade-targets"; duration_seconds = 30; chaos_mesh_resource = "kill-catalogue-once" }
     Stop-PF
     $experiment | ConvertTo-Json -Depth 10
 
-    if (Test-Path "scripts\pod-kill-cartservice.yaml") {
+    if (Test-Path "scripts\pod-kill-catalogue.yaml") {
         Write-Section "Apply PodChaos"
-        kubectl apply -f scripts\pod-kill-cartservice.yaml
+        kubectl apply -f scripts\pod-kill-catalogue.yaml
         $script:ChaosApplied = $true
     }
 
@@ -63,7 +63,7 @@ try {
 
     Write-Section "Topology Impact"
     Start-PF "topology-service" "8004:8004"
-    $impact = HttpJson POST "http://localhost:8004/topology/impact" @{ root_service = "cartservice" }
+    $impact = HttpJson POST "http://localhost:8004/topology/impact" @{ root_service = "catalogue" }
     Stop-PF
     $impact | ConvertTo-Json -Depth 10
 

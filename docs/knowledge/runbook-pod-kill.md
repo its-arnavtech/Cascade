@@ -27,5 +27,5 @@ Use this runbook when a target service becomes unhealthy after a pod kill, resta
 ## Example Queries
 
 - `pod restart unhealthy service anomaly`
-- `how do I investigate recommendationservice restart anomaly`
+- `how do I investigate catalogue restart anomaly`
 - `which incidents mention pod kill root cause`

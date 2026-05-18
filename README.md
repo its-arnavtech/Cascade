@@ -309,7 +309,8 @@ docs/                         Architecture and operations notes
 infra/kubernetes/             Kubernetes manifests
 scripts/                      Deployment, acceptance, debug, backup, and CI helpers
 services/                     FastAPI platform services
-targets/online-boutique-src/  Demo target workload
+targets/sock-shop/            Canonical demo target workload
+targets/online-boutique-src/  Inactive legacy/vendor snapshot
 tests/                        Python unit and integration-oriented tests
 web/command-center/           Command Center frontend
 ```

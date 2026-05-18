@@ -1,8 +1,8 @@
-import { Fragment } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, Database, GitBranch, Layers3, Search, ShieldCheck, Sparkles } from "lucide-react";
-import { useAnomalies, useCounts, useFeatureWindows, useIncidents, useInvestigations, useKnowledgeStats, useRemediationPlans, useResilienceScores, useSystemHealth } from "../api/hooks";
+import { AlertTriangle, BarChart3, Database, Layers3, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { useAnomalies, useCounts, useFeatureWindows, useIncidents, useInvestigations, useKnowledgeStats, useRemediationPlans, useResilienceScores, useSystemHealth, useTopologyGraph } from "../api/hooks";
 import { Badge } from "../components/Badge";
+import { TargetWorkloadPanel, TopologyGraphView } from "../components/IntelligencePanels";
 import { StatCard } from "../components/cards/StatCard";
 import { StatusPanel } from "../components/cards/StatusPanel";
 import { DataTable } from "../components/tables/DataTable";
@@ -17,6 +17,7 @@ export function OverviewPage() {
   const scores = useResilienceScores({ limit: 8 });
   const remediation = useRemediationPlans({ limit: 5 });
   const knowledgeStats = useKnowledgeStats();
+  const topology = useTopologyGraph();
   const degradedCount = health.data?.filter((item) => !item.ok).length ?? 0;
   const safetyScore = health.data?.length ? Math.round(((health.data.length - degradedCount) / health.data.length) * 100) : undefined;
   const latestIncident = incidents.data?.incidents?.[0];
@@ -43,7 +44,7 @@ export function OverviewPage() {
           <DataTable
             caption="Priority incidents"
             rows={incidents.data?.incidents ?? []}
-            empty="No incidents returned by the API."
+            empty="No data returned."
             columns={[
               { key: "title", label: "Incident", width: "34%", render: (row) => <strong>{String(row.title ?? row.incident_id ?? "-")}</strong> },
               { key: "service", label: "Service", width: "22%" },
@@ -56,27 +57,14 @@ export function OverviewPage() {
       </div>
 
       <div className="overview-lower">
-        <section className="panel topology-panel">
-          <div className="panel-heading"><h2>Service Topology</h2></div>
-          <div className="topology-map">
-            {targetServices.map((service) => (
-              <div key={service} className={`topology-node ${serviceHealthTone(service, health.data)}`}>
-                <CheckCircle2 size={14} />
-                <strong>{serviceNameParts(service).map((part, index) => (
-                  <Fragment key={`${service}-${part}-${index}`}>{index > 0 ? <wbr /> : null}{part}</Fragment>
-                ))}</strong>
-                <span>{serviceHealthLabel(service, health.data)}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+        <TargetWorkloadPanel />
 
         <section className="panel workflow-panel">
           <div className="panel-heading"><h2>Remediation Workflow</h2></div>
           <div className="workflow-track">
             {["Evidence gathered", "Plan generated", "Human approved", "Dry-run validated", "Execution disabled"].map((step, index) => (
               <div className={`workflow-step ${index === 4 ? "disabled" : "done"}`} key={step}>
-                <span>{index === 4 ? "↻" : "✓"}</span>
+                <span>{index === 4 ? "x" : "ok"}</span>
                 <strong>{step}</strong>
               </div>
             ))}
@@ -88,17 +76,15 @@ export function OverviewPage() {
         </section>
 
         <div className="side-stack">
+          <StatusPanel title="Topology Graph" loading={topology.isLoading} error={topology.error}>
+            <TopologyGraphView value={topology.data} />
+          </StatusPanel>
           <section className="panel knowledge-panel">
             <div className="panel-heading"><h2>Knowledge Search</h2></div>
             <Link className="searchbox-link" to="/knowledge">
               <Search size={18} />
               <span>Search knowledge chunks, runbooks, incidents...</span>
             </Link>
-            <div className="query-chips">
-              <span>checkout errors</span>
-              <span>payment timeouts</span>
-              <span>high latency</span>
-            </div>
           </section>
           <section className="panel next-step-panel">
             <div className="panel-heading"><h2>Recommended Next Step</h2></div>
@@ -117,11 +103,9 @@ export function OverviewPage() {
   );
 }
 
-const targetServices = ["frontend", "recommendationservice", "cartservice", "checkoutservice", "paymentservice", "shippingservice"];
-
 function SignalTrends({ features, anomalies, scores }: { features: Record<string, unknown>[]; anomalies: Record<string, unknown>[]; scores: Record<string, unknown>[] }) {
   const points = features.length ? features.slice(0, 10) : anomalies.slice(0, 10);
-  if (!points.length && !scores.length) return <div className="state">No platform signal data returned yet.</div>;
+  if (!points.length && !scores.length) return <div className="state">No data returned.</div>;
   return (
     <div className="signal-panel">
       <div className="signal-legend">
@@ -181,25 +165,6 @@ function shortTime(value: unknown) {
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function serviceHealthTone(service: string, health?: { name: string; ok: boolean }[]) {
-  const match = health?.find((item) => item.name.includes(service));
-  if (!match) return "monitoring";
-  return match.ok ? "healthy" : "degraded";
-}
-
-function serviceHealthLabel(service: string, health?: { name: string; ok: boolean }[]) {
-  const match = health?.find((item) => item.name.includes(service));
-  if (!match) return "Monitoring";
-  return match.ok ? "Healthy" : "Degraded";
-}
-
-function serviceNameParts(service: string) {
-  if (service.endsWith("service") && service.length > "cartservice".length) {
-    return [service.slice(0, -"service".length), "service"];
-  }
-  return [service];
 }
 
 function recommendedTitle(incident?: Record<string, unknown>, anomaly?: Record<string, unknown>) {

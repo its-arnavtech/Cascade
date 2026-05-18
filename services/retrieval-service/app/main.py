@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services.shared.causality import CausalityAnalyzeRequest, analyze_causality
 from services.shared.embedding.deterministic import embed_text
 from services.shared.events.mapping import build_memory_document, build_memory_payload, map_incident, map_incident_report, map_topology_snapshot
 from services.shared.knowledge.context import assemble_context_pack
@@ -194,6 +195,48 @@ async def anomaly_detail(anomaly_id: str) -> dict[str, Any]:
     return {"anomaly": anomaly}
 
 
+@app.post("/causality/analyze")
+async def causality_analyze(payload: CausalityAnalyzeRequest) -> dict[str, Any]:
+    target_service = payload.target_service or payload.service
+    feature_windows = await clickhouse.recent_feature_windows(payload.limit)
+    anomalies = await clickhouse.recent_anomalies(min(payload.limit, 500))
+    if payload.namespace:
+        feature_windows = [row for row in feature_windows if row.get("namespace") == payload.namespace]
+        anomalies = [row for row in anomalies if row.get("namespace") == payload.namespace]
+    topology = await clickhouse.latest_topology_snapshot()
+    report = analyze_causality(
+        feature_windows,
+        anomalies,
+        topology,
+        target_service=target_service,
+        target_feature=payload.target_feature,
+        source_feature=payload.source_feature,
+        max_lag_windows=payload.max_lag_windows,
+        min_correlation_samples=payload.min_correlation_samples,
+        min_granger_samples=payload.min_granger_samples,
+        granger_max_lag=payload.granger_max_lag,
+    )
+    await clickhouse.insert_causal_report(report)
+    return {"report": report}
+
+
+@app.get("/causality/reports/recent")
+async def causality_reports_recent(limit: int = 20, target_service: str | None = None) -> dict[str, Any]:
+    rows = await clickhouse.recent_causal_reports(limit, target_service)
+    return {"reports": [decode_causal_report_row(row) for row in rows], "count": len(rows)}
+
+
+@app.get("/causality/reports/{report_id}")
+async def causality_report_detail(report_id: str) -> dict[str, Any]:
+    result = await clickhouse.causal_report_detail(report_id)
+    if result["report"] is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Causal report not found")
+    return {
+        "report": decode_causal_report_row(result["report"]),
+        "candidates": [decode_causal_candidate_row(row) for row in result["candidates"]],
+    }
+
+
 @app.post("/knowledge/search")
 async def knowledge_search(payload: KnowledgeSearchRequest) -> dict[str, Any]:
     started = time.perf_counter()
@@ -241,6 +284,8 @@ async def debug_counts() -> dict[str, Any]:
         "topology_snapshots",
         "telemetry_feature_windows",
         "anomaly_events",
+        "causal_reports",
+        "causal_candidates",
         "model_runs",
         "knowledge_documents",
         "knowledge_chunks",
@@ -312,6 +357,38 @@ async def record_knowledge_query(query_id: str, query: str, filters: dict[str, A
 def decode_knowledge_row(row: dict[str, Any]) -> dict[str, Any]:
     decoded = dict(row)
     for source, target in [("tags_json", "tags"), ("metadata_json", "metadata")]:
+        value = decoded.pop(source, None)
+        if value is not None:
+            try:
+                decoded[target] = json.loads(value)
+            except Exception:
+                decoded[target] = value
+    return decoded
+
+
+def decode_causal_report_row(row: dict[str, Any]) -> dict[str, Any]:
+    decoded = dict(row)
+    for source, target in [("methodology_json", "methodology"), ("limitations_json", "limitations"), ("report_json", "report")]:
+        value = decoded.pop(source, None)
+        if value is not None:
+            try:
+                decoded[target] = json.loads(value)
+            except Exception:
+                decoded[target] = value
+    return decoded
+
+
+def decode_causal_candidate_row(row: dict[str, Any]) -> dict[str, Any]:
+    decoded = dict(row)
+    json_fields = [
+        ("pearson_json", "pearson"),
+        ("spearman_json", "spearman"),
+        ("granger_json", "granger"),
+        ("anomaly_context_json", "anomaly_context"),
+        ("limitations_json", "limitations"),
+        ("candidate_json", "candidate"),
+    ]
+    for source, target in json_fields:
         value = decoded.pop(source, None)
         if value is not None:
             try:

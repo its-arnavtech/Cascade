@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cascade.local/schemas/causal-report.schema.json",
+  "title": "Cascade Causal Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_id",
+    "generated_at",
+    "status",
+    "target_feature",
+    "source_feature",
+    "summary",
+    "methodology",
+    "candidates",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "phase5.causality.v1" },
+    "report_id": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "target_service": { "type": ["string", "null"] },
+    "target_feature": { "type": "string" },
+    "source_feature": { "type": "string" },
+    "status": { "enum": ["ranked", "insufficient_samples"] },
+    "summary": { "type": "string" },
+    "methodology": {
+      "type": "object",
+      "required": ["correlation", "granger", "ranking"],
+      "properties": {
+        "correlation": { "type": "string" },
+        "granger": { "type": "string" },
+        "ranking": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "window_start": { "type": ["string", "null"] },
+    "window_end": { "type": ["string", "null"] },
+    "candidates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rank",
+          "source_service",
+          "target_service",
+          "status",
+          "rank_score",
+          "best_p_value",
+          "effect_size",
+          "lag_windows",
+          "sample_count",
+          "pearson",
+          "spearman",
+          "granger",
+          "limitations",
+          "interpretation"
+        ],
+        "properties": {
+          "rank": { "type": "integer", "minimum": 0 },
+          "source_service": { "type": "string" },
+          "target_service": { "type": "string" },
+          "source_feature": { "type": "string" },
+          "target_feature": { "type": "string" },
+          "status": { "enum": ["ranked", "insufficient_samples"] },
+          "rank_score": { "type": "number" },
+          "best_p_value": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+          "effect_size": { "type": "number", "minimum": 0, "maximum": 1 },
+          "lag_windows": { "type": "integer", "minimum": 0 },
+          "sample_count": { "type": "integer", "minimum": 0 },
+          "pearson": { "$ref": "#/$defs/statistical_test" },
+          "spearman": { "$ref": "#/$defs/statistical_test" },
+          "granger": { "$ref": "#/$defs/statistical_test" },
+          "topology_distance": { "type": ["integer", "null"], "minimum": 0 },
+          "anomaly_context": { "type": "object" },
+          "lag_results": { "type": "array" },
+          "limitations": { "type": "array", "items": { "type": "string" } },
+          "interpretation": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "statistical_test": {
+      "type": "object",
+      "required": ["tested", "sample_count", "p_value"],
+      "properties": {
+        "tested": { "type": "boolean" },
+        "method": { "type": "string" },
+        "reason": { "type": "string" },
+        "sample_count": { "type": "integer", "minimum": 0 },
+        "correlation": { "type": ["number", "null"], "minimum": -1, "maximum": 1 },
+        "f_statistic": { "type": "number" },
+        "lag_order": { "type": "integer", "minimum": 1 },
+        "p_value": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

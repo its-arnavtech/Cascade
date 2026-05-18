@@ -43,6 +43,8 @@ spec:
               value: "150"
             - name: KNOWLEDGE_BACKGROUND_ENABLED
               value: "false"
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

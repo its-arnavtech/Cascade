@@ -3,6 +3,7 @@ import { dangerousActionsEnabled } from "../api/client";
 import { useApprovals, useCreateApproval, useCreateRemediationPlan, useDryRunRemediation, useExecutions, useRemediationPlans, useRemediationPolicy } from "../api/hooks";
 import { AlertTriangle, Check } from "lucide-react";
 import { Badge } from "../components/Badge";
+import { SafetyFindingsPanel, TargetWorkloadPanel } from "../components/IntelligencePanels";
 import { JsonBlock } from "../components/JsonBlock";
 import { StatusPanel } from "../components/cards/StatusPanel";
 import { DataTable } from "../components/tables/DataTable";
@@ -15,7 +16,7 @@ export function RemediationPage() {
   const createPlan = useCreateRemediationPlan();
   const createApproval = useCreateApproval();
   const dryRun = useDryRunRemediation();
-  const [planForm, setPlanForm] = useState({ trigger_type: "manual", service: "recommendationservice", namespace: "cascade-targets", objective: "Recommend safe remediation next steps", preferred_action_type: "investigate_only" });
+  const [planForm, setPlanForm] = useState({ trigger_type: "manual", service: "", namespace: "", objective: "Recommend safe remediation next steps", preferred_action_type: "investigate_only" });
   const [approvalForm, setApprovalForm] = useState({ plan_id: "", decision: "approved", approver: "local-operator", approver_role: "developer", reason: "Approved for dry-run validation only", expires_minutes: 60 });
   const [dryRunForm, setDryRunForm] = useState({ plan_id: "", approval_id: "" });
   const [activeStep, setActiveStep] = useState(1);
@@ -23,7 +24,7 @@ export function RemediationPage() {
 
   function submitPlan(event: FormEvent) {
     event.preventDefault();
-    createPlan.mutate(planForm, {
+    createPlan.mutate(compact(planForm), {
       onSuccess: (data) => {
         const planId = String(data.plan_id ?? "");
         setApprovalForm((current) => ({ ...current, plan_id: planId }));
@@ -88,13 +89,17 @@ export function RemediationPage() {
         ) : null}
       </section>
       <div aria-live="polite">{createPlan.error ? <div className="state error">{createPlan.error.message}</div> : null}{createApproval.error ? <div className="state error">{createApproval.error.message}</div> : null}{dryRun.error ? <div className="state error">{dryRun.error.message}</div> : null}{dryRun.data ? <div className="state success">Dry-run validation recorded.</div> : null}</div>
+      <div className="grid two">
+        <TargetWorkloadPanel />
+        <StatusPanel title="Safety Findings" loading={policy.isLoading || plans.isLoading} error={policy.error ?? plans.error}><SafetyFindingsPanel policy={policy.data} record={plans.data?.plans?.[0]} dryRun={dryRun.data?.execution ?? dryRun.data} /></StatusPanel>
+      </div>
       <StatusPanel title="Safety Policy" loading={policy.isLoading} error={policy.error}>{showPolicyRaw ? <JsonBlock value={policy.data} /> : <PolicySummary value={policy.data} />}<button type="button" className="link-button" onClick={() => setShowPolicyRaw((value) => !value)}>{showPolicyRaw ? "Hide raw policy" : "View raw policy"}</button></StatusPanel>
       <StatusPanel title="Remediation Plans" loading={plans.isLoading} error={plans.error}>
-        <DataTable caption="Remediation plans" rows={plans.data?.plans ?? []} columns={[{ key: "created_at", label: "Created", width: "130px" }, { key: "plan_id", label: "Plan", width: "160px" }, { key: "service", label: "Service", width: "140px" }, { key: "action_type", label: "Action", width: "140px" }, { key: "confidence", label: "Confidence", width: "100px" }, { key: "action_summary", label: "Summary" }, { key: "actions", label: "Actions", width: "190px", align: "right", render: (row) => <div className="table-actions"><button type="button" className="compact" onClick={() => { const id = String(row.plan_id ?? ""); setApprovalForm((current) => ({ ...current, plan_id: id })); setActiveStep(2); }}>Approve -&gt;</button><button type="button" className="btn-dry compact" onClick={() => { const id = String(row.plan_id ?? ""); setDryRunForm((current) => ({ ...current, plan_id: id })); setActiveStep(3); }}>Validate -&gt;</button></div> }]} />
+        <DataTable caption="Remediation plans" rows={plans.data?.plans ?? []} empty="No data returned." columns={[{ key: "created_at", label: "Created", width: "130px" }, { key: "plan_id", label: "Plan", width: "160px" }, { key: "service", label: "Service", width: "140px" }, { key: "action_type", label: "Action", width: "140px" }, { key: "confidence", label: "Confidence", width: "100px" }, { key: "safety_findings", label: "Safety", render: (row) => formatList(row.safety_findings) }, { key: "rollback_steps", label: "Rollback", render: (row) => formatList(row.rollback_steps) }, { key: "actions", label: "Actions", width: "190px", align: "right", render: (row) => <div className="table-actions"><button type="button" className="compact" onClick={() => { const id = String(row.plan_id ?? ""); setApprovalForm((current) => ({ ...current, plan_id: id })); setActiveStep(2); }}>Approve -&gt;</button><button type="button" className="btn-dry compact" onClick={() => { const id = String(row.plan_id ?? ""); setDryRunForm((current) => ({ ...current, plan_id: id })); setActiveStep(3); }}>Validate -&gt;</button></div> }]} />
       </StatusPanel>
       <div className="grid two">
-        <StatusPanel title="Approvals" loading={approvals.isLoading} error={approvals.error}><DataTable caption="Approvals" rows={approvals.data?.approvals ?? []} columns={[{ key: "decided_at", label: "Decided" }, { key: "plan_id", label: "Plan" }, { key: "decision", label: "Decision", render: (row) => <Badge tone={row.decision === "approved" ? "good" : "bad"}>{String(row.decision ?? "-")}</Badge> }, { key: "approver", label: "Approver" }, { key: "reason", label: "Reason" }]} /></StatusPanel>
-        <StatusPanel title="Executions / Dry-runs" loading={executions.isLoading} error={executions.error}><DataTable caption="Executions and dry-runs" rows={executions.data?.executions ?? []} columns={[{ key: "started_at", label: "Started" }, { key: "plan_id", label: "Plan" }, { key: "dry_run", label: "Dry-run" }, { key: "executed", label: "Executed" }, { key: "validation_status", label: "Validation", render: (row) => <Badge tone={statusTone(row.validation_status)}>{String(row.validation_status ?? "-")}</Badge> }, { key: "output_summary", label: "Summary" }]} /></StatusPanel>
+        <StatusPanel title="Approvals" loading={approvals.isLoading} error={approvals.error}><DataTable caption="Approvals" rows={approvals.data?.approvals ?? []} empty="No data returned." columns={[{ key: "decided_at", label: "Decided" }, { key: "plan_id", label: "Plan" }, { key: "decision", label: "Decision", render: (row) => <Badge tone={row.decision === "approved" ? "good" : "bad"}>{String(row.decision ?? "-")}</Badge> }, { key: "approver", label: "Approver" }, { key: "reason", label: "Reason" }]} /></StatusPanel>
+        <StatusPanel title="Executions / Dry-runs" loading={executions.isLoading} error={executions.error}><DataTable caption="Executions and dry-runs" rows={executions.data?.executions ?? []} empty="No data returned." columns={[{ key: "started_at", label: "Started" }, { key: "plan_id", label: "Plan" }, { key: "dry_run", label: "Dry-run" }, { key: "executed", label: "Executed" }, { key: "rollback_available", label: "Rollback" }, { key: "validation_status", label: "Validation", render: (row) => <Badge tone={statusTone(row.validation_status)}>{String(row.validation_status ?? "-")}</Badge> }, { key: "output_summary", label: "Dry-run result" }]} /></StatusPanel>
       </div>
     </div>
   );
@@ -111,8 +116,16 @@ function ReadOnlyValue({ label, value }: { label: string; value: string }) {
 function PolicySummary({ value }: { value: unknown }) {
   const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const entries = Object.entries(record).slice(0, 6);
-  if (!entries.length) return <div className="state">No policy details loaded yet.</div>;
+  if (!entries.length) return <div className="state">No data returned.</div>;
   return <div className="policy-grid">{entries.map(([key, item]) => <div key={key}><span>{key.replace(/_/g, " ")}</span><strong>{typeof item === "object" ? JSON.stringify(item).slice(0, 80) : String(item)}</strong></div>)}</div>;
+}
+
+function formatList(value: unknown) {
+  return Array.isArray(value) && value.length ? value.join("; ") : "No data returned.";
+}
+
+function compact(value: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== ""));
 }
 
 function statusTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" {

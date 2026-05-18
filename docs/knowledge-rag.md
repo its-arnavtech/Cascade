@@ -32,7 +32,7 @@ Chunking is deterministic and markdown-aware. The default chunk size is 1000 cha
 
 ## Metadata Design
 
-Metadata includes `source_type`, `document_type`, `title`, `source_path`, `source_uri`, `phase`, `service`, `namespace`, `severity`, tags, content hash, and chunk hash. Path and text heuristics infer phase names, Online Boutique services, runbook/document types, and severity when explicit metadata is unavailable.
+Metadata includes `source_type`, `document_type`, `title`, `source_path`, `source_uri`, `phase`, `service`, `namespace`, `severity`, tags, content hash, and chunk hash. Path and text heuristics infer phase names, Sock Shop services, runbook/document types, and severity when explicit metadata is unavailable.
 
 ## Deterministic Embeddings
 

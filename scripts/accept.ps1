@@ -1,7 +1,7 @@
 param(
     [string]$Namespace = "cascade-system",
     [string]$TargetNamespace = "cascade-targets",
-    [string]$TargetService = "recommendationservice",
+    [string]$TargetService = "catalogue",
     [switch]$SkipFrontendBuild
 )
 
@@ -101,7 +101,9 @@ try {
     foreach ($t in @("telemetry_events", "experiment_events", "anomaly_events", "investigation_runs", "chaos_experiment_runs", "remediation_plans", "remediation_approvals", "remediation_executions")) {
         if ($tables -match "(?m)^$t$") { Add-Pass "ClickHouse table $t exists" } else { Add-Fail "ClickHouse table $t missing" }
     }
-    foreach ($topic in @("telemetry.raw", "telemetry.enriched", "experiments.events", "anomalies.detected", "agent.investigations", "chaos.experiments", "remediation.actions")) {
+    $topicEnsure = Ensure-CascadeRedpandaTopics -Namespace $Namespace
+    if ($topicEnsure.Success) { Add-Pass "Required Redpanda topics ensured" } else { Add-Fail "Required Redpanda topics could not be ensured. Missing: $($topicEnsure.Missing -join ', ')" }
+    foreach ($topic in $CascadeRequiredRedpandaTopics) {
         $topicCheck = Test-CascadeRedpandaTopic -Namespace $Namespace -Topic $topic
         if ($topicCheck.Exists) { Add-Pass "$topic topic exists" } else { Add-Fail "$topic topic missing. Raw topic list: $($topicCheck.Raw)" }
     }

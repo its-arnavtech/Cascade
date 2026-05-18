@@ -35,6 +35,15 @@ spec:
               value: "8123"
             - name: CLICKHOUSE_DATABASE
               value: cascade
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
           readinessProbe:
             httpGet:
               path: /ready
@@ -47,4 +56,3 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 20
-

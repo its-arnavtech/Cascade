@@ -18,6 +18,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 class Settings(BaseSettings):
     retrieval_service_url: str = "http://retrieval-service.cascade-system.svc.cluster.local:8012"
     knowledge_retrieval_service_url: str = "http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016"
+    topology_service_url: str = "http://topology-service.cascade-system.svc.cluster.local:8004"
+    causal_reconstruction_service_url: str = "http://causal-reconstruction-service.cascade-system.svc.cluster.local:8005"
+    incident_timeline_service_url: str = "http://incident-timeline-service.cascade-system.svc.cluster.local:8006"
     agent_tool_gateway_url: str = "http://agent-tool-gateway.cascade-system.svc.cluster.local:8017"
     agent_orchestrator_service_url: str = "http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018"
     chaos_planner_service_url: str = "http://chaos-planner-service.cascade-system.svc.cluster.local:8019"
@@ -71,6 +74,11 @@ rate_limiter = InMemoryRateLimiter(
 ROUTES: dict[str, str] = {
     "retrieval": settings.retrieval_service_url,
     "knowledge": settings.knowledge_retrieval_service_url,
+    "topology": settings.topology_service_url,
+    "causality": settings.retrieval_service_url,
+    "causal-reconstruction": settings.causal_reconstruction_service_url,
+    "target": settings.topology_service_url,
+    "timeline": settings.incident_timeline_service_url,
     "agent": settings.agent_orchestrator_service_url,
     "tools": settings.agent_tool_gateway_url,
     "chaos/planner": settings.chaos_planner_service_url,
@@ -86,6 +94,13 @@ ALLOWED_METHODS = {"GET", "POST"}
 SAFE_POST_PATHS = {
     ("knowledge", "knowledge/search"),
     ("knowledge", "knowledge/context"),
+    ("topology", "topology/impact"),
+    ("topology", "topology/blast-radius"),
+    ("topology", "topology/critical-paths"),
+    ("causality", "causality/analyze"),
+    ("causal-reconstruction", "reconstruct"),
+    ("timeline", "timeline"),
+    ("timeline", "report"),
     ("agent", "investigations"),
     ("chaos/planner", "plans"),
     ("chaos/executor", "runs"),
@@ -181,7 +196,7 @@ def _enforce_safety(prefix: str, upstream_path: str, method: str, body: bytes) -
     if method != "POST":
         return
     normalized = upstream_path.strip("/")
-    if (prefix, normalized) not in SAFE_POST_PATHS:
+    if (prefix, normalized) not in SAFE_POST_PATHS and not _is_safe_analysis_post(prefix, normalized):
         raise HTTPException(status_code=403, detail="This Command Center POST route is not exposed")
 
     if settings.enable_dangerous_actions:
@@ -194,6 +209,13 @@ def _enforce_safety(prefix: str, upstream_path: str, method: str, body: bytes) -
     if prefix == "chaos/executor" and normalized == "runs":
         if payload.get("dry_run") is not True or payload.get("approved") is True:
             raise HTTPException(status_code=403, detail="Only chaos dry-run execution is exposed by default")
+
+
+def _is_safe_analysis_post(prefix: str, normalized_path: str) -> bool:
+    if prefix in {"chaos/planner", "remediation/recommender"}:
+        parts = normalized_path.strip("/").split("/")
+        return len(parts) == 3 and parts[0] == "plans" and parts[2] == "validate"
+    return False
 
 
 def _json_body(body: bytes) -> dict[str, Any]:

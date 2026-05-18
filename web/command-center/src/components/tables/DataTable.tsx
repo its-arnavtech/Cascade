@@ -9,7 +9,7 @@ export interface Column<T extends object> {
 export function DataTable<T extends object>({
   rows,
   columns,
-  empty = "No records",
+  empty = "No data returned.",
   caption = "Data table",
   getRowClassName,
   onRowClick,
@@ -55,7 +55,7 @@ export function DataTable<T extends object>({
           ) : (
             <tr>
               <td className="empty-cell" colSpan={columns.length}>
-                <span className="empty-icon" aria-hidden="true">□</span>
+                <span className="empty-icon" aria-hidden="true">[]</span>
                 {empty}
               </td>
             </tr>

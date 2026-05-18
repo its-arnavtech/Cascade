@@ -1,0 +1,115 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: clickhouse-allow-required-cascade-services
+  namespace: cascade-system
+spec:
+  podSelector:
+    matchLabels:
+      app: clickhouse
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - monitoring
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - agent-orchestrator-service
+                  - anomaly-detector-service
+                  - approval-service
+                  - chaos-executor-service
+                  - chaos-planner-service
+                  - feature-extractor-service
+                  - knowledge-ingestion-service
+                  - knowledge-retrieval-service
+                  - remediation-executor-service
+                  - remediation-recommender-service
+                  - retrieval-service
+                  - telemetry-archiver
+      ports:
+        - protocol: TCP
+          port: 8123
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redpanda-allow-required-cascade-services
+  namespace: cascade-system
+spec:
+  podSelector:
+    matchLabels:
+      app: redpanda
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - monitoring
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - agent-orchestrator-service
+                  - anomaly-detector-service
+                  - approval-service
+                  - chaos-executor-service
+                  - causal-reconstruction-service
+                  - experiment-tracker-service
+                  - incident-timeline-service
+                  - memory-indexer
+                  - observation-service
+                  - remediation-executor-service
+                  - remediation-recommender-service
+                  - stream-enricher
+                  - telemetry-archiver
+      ports:
+        - protocol: TCP
+          port: 9092
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: qdrant-allow-required-cascade-services
+  namespace: cascade-system
+spec:
+  podSelector:
+    matchLabels:
+      app: qdrant
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - monitoring
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values:
+                  - knowledge-ingestion-service
+                  - knowledge-retrieval-service
+                  - memory-indexer
+                  - retrieval-service
+      ports:
+        - protocol: TCP
+          port: 6333

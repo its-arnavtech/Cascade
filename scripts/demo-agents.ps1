@@ -23,9 +23,9 @@ try {
     Write-Section "Start Deterministic Investigation"
     $result = HttpJson POST "http://localhost:8018/investigations" @{
         trigger_type = "service"
-        service = "recommendationservice"
+        service = "catalogue"
         namespace = "cascade-targets"
-        objective = "Investigate recommendationservice restart anomaly using stored telemetry, anomalies, topology, memory, and knowledge"
+        objective = "Investigate catalogue restart anomaly using stored telemetry, anomalies, topology, memory, and knowledge"
         mode = "deterministic"
         max_steps = 12
     }

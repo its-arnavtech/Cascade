@@ -27,7 +27,7 @@ telemetry.enriched + experiments.events
 - `observation-service`: `/health`, `/snapshot`, `/metrics/raw`; publishes `telemetry.raw`.
 - `stream-enricher`: consumes `telemetry.raw`, publishes `telemetry.enriched`, exposes `/health` and `/stats`.
 - `experiment-tracker-service`: tracks experiment metadata and publishes `experiments.events`.
-- `topology-service`: static Online Boutique dependency graph and impact paths.
+- `topology-service`: Sock Shop target catalog dependency graph and impact paths.
 - `causal-reconstruction-service`: deterministic incident reconstruction from experiment and telemetry events.
 - `incident-timeline-service`: JSON and Markdown incident reports.
 - `redpanda`: Kafka API-compatible broker for local kind.

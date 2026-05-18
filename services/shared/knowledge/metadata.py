@@ -4,18 +4,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-KNOWN_SERVICES = [
-    "frontend",
-    "cartservice",
-    "checkoutservice",
-    "recommendationservice",
-    "paymentservice",
-    "productcatalogservice",
-    "shippingservice",
-    "currencyservice",
-    "emailservice",
-    "adservice",
-    "redis-cart",
+from services.shared.targets.catalog import ACTIVE_NAMESPACE, ACTIVE_SERVICES
+
+CASCADE_SERVICES = [
     "observation-service",
     "stream-enricher",
     "telemetry-archiver",
@@ -25,6 +16,7 @@ KNOWN_SERVICES = [
     "knowledge-ingestion-service",
     "knowledge-retrieval-service",
 ]
+KNOWN_SERVICES = [*ACTIVE_SERVICES, *CASCADE_SERVICES]
 
 
 def infer_metadata(source_path: str, content: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -36,7 +28,7 @@ def infer_metadata(source_path: str, content: str, metadata: dict[str, Any] | No
     doc_type = metadata.get("document_type") or _document_type(source_path, lowered)
     phase = metadata.get("phase") or _phase(lowered)
     service = metadata.get("service") or _service(lowered)
-    namespace = metadata.get("namespace") or ("cascade-targets" if any(s in lowered for s in KNOWN_SERVICES[:11]) else "")
+    namespace = metadata.get("namespace") or (ACTIVE_NAMESPACE if any(s in lowered for s in ACTIVE_SERVICES) else "")
     severity = metadata.get("severity") or _severity(lowered)
     if doc_type and doc_type not in tags:
         tags.append(doc_type)

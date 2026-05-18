@@ -35,11 +35,11 @@ kubectl port-forward -n cascade-system svc/qdrant 16333:6333
 kubectl port-forward -n cascade-system svc/retrieval-service 18012:8012
 ```
 
-If Prometheus, Grafana, or Online Boutique are installed in your local Observability foundation environment, forward them using their existing services in the cluster.
+If Prometheus or Grafana are installed in your local Observability foundation environment, forward them using their existing services in the cluster.
 
 ## Recommended Flow
 
-1. Show the Online Boutique target workload running in `cascade-targets`.
+1. Show the Sock Shop target workload running in `cascade-targets`.
 2. Show Prometheus/Grafana metrics if those Observability foundation observability services are running.
 3. Open Command Center overview and telemetry pages.
 4. Show anomaly data and retrieval counts.

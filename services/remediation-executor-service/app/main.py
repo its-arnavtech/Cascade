@@ -74,8 +74,11 @@ async def ready() -> dict[str, Any]:
 
 @app.get("/safety/policy")
 async def safety_policy() -> dict[str, Any]:
-    data = default_policy().model_dump()
+    policy = default_policy()
+    data = policy.model_dump()
     data["execution_enabled"] = settings.execution_enabled
+    data["denied"] = {"namespaces": policy.denied_namespaces, "services": policy.denied_services, "resource_kinds": policy.denied_resource_kinds}
+    data["protected"] = {"services": policy.protected_services}
     return data
 
 

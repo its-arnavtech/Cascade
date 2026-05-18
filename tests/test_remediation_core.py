@@ -14,7 +14,7 @@ class Phase8CoreTests(unittest.TestCase):
     def _plan(self, action_type: str = "investigate_only", namespace: str = "cascade-targets", evidence: bool = True) -> dict:
         request = RemediationPlanRequest(
             trigger_type="manual",
-            service="recommendationservice",
+            service="catalogue",
             namespace=namespace,
             objective="Recommend safe remediation",
             preferred_action_type=action_type,

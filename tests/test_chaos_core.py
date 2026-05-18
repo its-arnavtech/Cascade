@@ -10,7 +10,7 @@ from services.shared.chaos.templates import build_manifest, stable_id
 
 
 class Phase7CoreTests(unittest.TestCase):
-    def _plan(self, namespace: str = "cascade-targets", service: str = "recommendationservice", kind: str = "pod_kill", duration: int = 30) -> dict:
+    def _plan(self, namespace: str = "cascade-targets", service: str = "catalogue", kind: str = "pod_kill", duration: int = 30) -> dict:
         experiment_id = stable_id("chaos_exp", f"{namespace}:{service}:{kind}")
         manifest = build_manifest(kind, experiment_id, namespace, service, duration)
         return {
@@ -49,7 +49,7 @@ class Phase7CoreTests(unittest.TestCase):
         self.assertGreaterEqual(result.safety_score, 0.9)
 
     def test_pod_kill_template_has_required_labels(self) -> None:
-        manifest = build_manifest("pod_kill", "chaos_exp_test", "cascade-targets", "recommendationservice", 30)
+        manifest = build_manifest("pod_kill", "chaos_exp_test", "cascade-targets", "catalogue", 30)
         self.assertEqual(manifest["kind"], "PodChaos")
         self.assertEqual(manifest["metadata"]["namespace"], "cascade-targets")
         self.assertEqual(manifest["metadata"]["labels"]["cascade.io/phase"], "phase7")
@@ -63,9 +63,9 @@ class Phase7CoreTests(unittest.TestCase):
         self.assertEqual(grade_for_score(0.2), "F")
 
     def test_scoring_penalizes_anomalies_and_incidents(self) -> None:
-        plan = {"blast_radius_score": 0.2, "target_service": "recommendationservice"}
-        clean = compute_resilience_score({"cleanup_status": "cleaned_up"}, {"telemetry_events_count": 5, "anomaly_events_count": 0, "incidents_count": 0, "affected_services": ["recommendationservice"]}, plan)
-        noisy = compute_resilience_score({"cleanup_status": "cleaned_up"}, {"telemetry_events_count": 5, "anomaly_events_count": 4, "incidents_count": 2, "affected_services": ["recommendationservice", "frontend"]}, plan)
+        plan = {"blast_radius_score": 0.2, "target_service": "catalogue"}
+        clean = compute_resilience_score({"cleanup_status": "cleaned_up"}, {"telemetry_events_count": 5, "anomaly_events_count": 0, "incidents_count": 0, "affected_services": ["catalogue"]}, plan)
+        noisy = compute_resilience_score({"cleanup_status": "cleaned_up"}, {"telemetry_events_count": 5, "anomaly_events_count": 4, "incidents_count": 2, "affected_services": ["catalogue", "front-end"]}, plan)
         self.assertGreater(clean["resilience_score"], noisy["resilience_score"])
 
     def test_event_schema_builder_is_compact(self) -> None:

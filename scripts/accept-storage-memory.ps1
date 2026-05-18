@@ -48,7 +48,7 @@ try {
 
     Start-PF "experiment-tracker-service" "8002:8002"
     try {
-        $experiment = HttpJson POST "http://localhost:8002/experiments" @{ experiment_type = "storage-memory-acceptance"; target_service = "cartservice"; namespace = "cascade-targets"; duration_seconds = 30; chaos_mesh_resource = "storage-memory-acceptance" } 10
+        $experiment = HttpJson POST "http://localhost:8002/experiments" @{ experiment_type = "storage-memory-acceptance"; target_service = "carts"; namespace = "cascade-targets"; duration_seconds = 30; chaos_mesh_resource = "storage-memory-acceptance" } 10
         if ($experiment.experiment_id) { Add-Pass "Created acceptance experiment" } else { Add-Fail "Could not create acceptance experiment" }
     } finally { Stop-PF }
 
@@ -64,7 +64,7 @@ try {
     try { $incident = HttpJson POST "http://localhost:8005/reconstruct" @{ experiment_id = $experiment.experiment_id; lookback_seconds = 60; window_seconds = 300 } 10 } finally { Stop-PF }
     Start-PF "topology-service" "8004:8004"
     try {
-        $impact = HttpJson POST "http://localhost:8004/topology/impact" @{ root_service = "cartservice" } 10
+        $impact = HttpJson POST "http://localhost:8004/topology/impact" @{ root_service = "carts" } 10
         $topology = HttpJson GET "http://localhost:8004/topology" $null 10
     } finally { Stop-PF }
     Start-PF "incident-timeline-service" "8006:8006"

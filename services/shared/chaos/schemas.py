@@ -4,11 +4,13 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from services.shared.targets.catalog import ACTIVE_NAMESPACE, ACTIVE_PROTECTED_SERVICES, ACTIVE_SAFE_CHAOS_SERVICES
+
 
 class ChaosPlanRequest(BaseModel):
     objective: str = "Validate service resilience with bounded chaos"
-    target_service: str = "recommendationservice"
-    target_namespace: str = "cascade-targets"
+    target_service: str = "catalogue"
+    target_namespace: str = ACTIVE_NAMESPACE
     target_workload: str | None = None
     experiment_kind: str = Field(default="pod_kill", pattern="^(pod_kill|network_delay|stress_cpu)$")
     duration_seconds: int = Field(default=30, ge=5, le=300)
@@ -24,10 +26,14 @@ class ChaosRunRequest(BaseModel):
 
 
 class SafetyPolicy(BaseModel):
-    allowed_namespaces: list[str] = Field(default_factory=lambda: ["cascade-targets"])
+    allowed_namespaces: list[str] = Field(default_factory=lambda: [ACTIVE_NAMESPACE])
     denied_namespaces: list[str] = Field(default_factory=lambda: ["kube-system", "kube-public", "kube-node-lease", "local-path-storage", "monitoring", "cascade-system", "default"])
-    allowed_services: list[str] = Field(default_factory=lambda: ["frontend", "cartservice", "checkoutservice", "productcatalogservice", "currencyservice", "paymentservice", "shippingservice", "emailservice", "recommendationservice", "adservice", "redis-cart"])
+    allowed_services: list[str] = Field(default_factory=lambda: list(ACTIVE_SAFE_CHAOS_SERVICES))
+    denied_services: list[str] = Field(default_factory=lambda: ["clickhouse", "redpanda", "qdrant", "postgres", "postgresql", "mysql", "mongodb", "kafka"])
+    protected_services: list[str] = Field(default_factory=lambda: list(ACTIVE_PROTECTED_SERVICES) + ["clickhouse", "redpanda", "qdrant", "prometheus", "grafana", "chaos-controller-manager"])
     supported_kinds: list[str] = Field(default_factory=lambda: ["pod_kill", "network_delay", "stress_cpu"])
+    supported_resource_kinds: list[str] = Field(default_factory=lambda: ["PodChaos", "NetworkChaos", "StressChaos"])
+    denied_resource_kinds: list[str] = Field(default_factory=lambda: ["Namespace", "Secret", "ConfigMap", "Role", "RoleBinding", "ClusterRole", "ClusterRoleBinding", "ServiceAccount", "PersistentVolumeClaim", "StatefulSet", "Job", "CronJob"])
     max_duration_seconds: int = 120
     max_target_count: int = 1
     require_approval_for_real_runs: bool = True

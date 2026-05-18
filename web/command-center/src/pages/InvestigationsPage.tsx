@@ -1,6 +1,7 @@
 import { FormEvent, MouseEvent, useRef, useState } from "react";
 import { useCreateInvestigation, useCreateRemediationPlan, useInvestigation, useInvestigations } from "../api/hooks";
 import { Badge } from "../components/Badge";
+import { BlastRadiusPanel, CausalReportPanel, EvidenceReportPanel } from "../components/IntelligencePanels";
 import { JsonBlock } from "../components/JsonBlock";
 import { StatusPanel } from "../components/cards/StatusPanel";
 import { DataTable } from "../components/tables/DataTable";
@@ -12,11 +13,11 @@ export function InvestigationsPage() {
   const [selected, setSelected] = useState("");
   const detailRef = useRef<HTMLElement | null>(null);
   const detail = useInvestigation(selected);
-  const [form, setForm] = useState({ trigger_type: "manual", service: "recommendationservice", namespace: "cascade-targets", objective: "Investigate recent reliability signals", max_steps: 12 });
+  const [form, setForm] = useState({ trigger_type: "manual", service: "", namespace: "", objective: "Investigate recent reliability signals", max_steps: 12 });
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    create.mutate({ ...form, mode: "deterministic", max_steps: Number(form.max_steps) });
+    create.mutate({ ...compact(form), mode: "deterministic", max_steps: Number(form.max_steps) });
   }
 
   function viewInvestigation(event: MouseEvent<HTMLButtonElement>, row: Record<string, unknown>) {
@@ -84,9 +85,9 @@ export function InvestigationsPage() {
         {selected ? (
           <>
             <button type="button" className="btn-dry" onClick={() => createPlan.mutate({ trigger_type: "investigation", trigger_id: selected, service: "", namespace: "cascade-targets", objective: `Create safe plan from investigation ${selected}`, preferred_action_type: "investigate_only" })}>Create remediation plan</button>
-            {detail.data ? <InvestigationDetail value={detail.data} /> : <div className="state">No investigation detail was returned for this record yet.</div>}
+            {detail.data ? <InvestigationDetail value={detail.data} /> : <div className="state">No data returned.</div>}
           </>
-        ) : <div className="state">Select an investigation to inspect steps, tool calls, report, and suggested remediation text.</div>}
+        ) : <div className="state">No data returned. Select an investigation to inspect steps, tool calls, report, and suggested remediation text.</div>}
       </StatusPanel>
       </section>
     </div>
@@ -101,8 +102,10 @@ function getInvestigationId(row: Record<string, unknown>) {
 function InvestigationDetail({ value }: { value: unknown }) {
   const record = asRecord(value) ?? {};
   const investigation = asRecord(record.investigation) ?? record;
+  const report = asRecord(record.report);
   const steps = asArray(record.steps) ?? asArray(record.tool_calls) ?? asArray(investigation.steps) ?? asArray(investigation.tool_calls);
   const confidence = Number(investigation.confidence ?? record.confidence ?? 0);
+  const service = String(investigation.service ?? report?.service ?? "");
 
   return (
     <div className="investigation-detail">
@@ -115,6 +118,15 @@ function InvestigationDetail({ value }: { value: unknown }) {
           <div className="confidence-row"><span>Confidence</span><div className="confidence-track"><div style={{ width: `${Math.max(0, Math.min(100, confidence <= 1 ? confidence * 100 : confidence))}%` }} /></div><strong>{formatConfidence(confidence)}</strong></div>
         </div>
       </section>
+      <section className="detail-card">
+        <h3>Intelligence summary</h3>
+        <CausalReportPanel value={report ?? investigation} />
+      </section>
+      <section className="detail-card">
+        <h3>Evidence</h3>
+        <EvidenceReportPanel value={record} />
+      </section>
+      <BlastRadiusPanel service={service || undefined} />
       {steps?.length ? (
         <section className="detail-card">
           <h3>Steps and tool calls</h3>
@@ -140,6 +152,10 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function asArray(value: unknown): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
+}
+
+function compact(value: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== ""));
 }
 
 function statusTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" {

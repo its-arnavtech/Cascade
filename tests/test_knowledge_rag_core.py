@@ -31,16 +31,16 @@ class Phase5CoreTests(unittest.TestCase):
         self.assertEqual(chunk_document(doc), [])
 
     def test_document_hash_and_chunk_ids_are_stable(self) -> None:
-        content = "# Service Latency\n\ncheckoutservice latency"
+        content = "# Service Latency\n\norders latency"
         self.assertEqual(document_hash(content), document_hash(content))
         doc = build_document(content, "docs/knowledge/runbook-service-latency.md")
         self.assertEqual(chunk_document(doc)[0]["chunk_id"], chunk_document(doc)[0]["chunk_id"])
 
     def test_metadata_extraction_handles_paths(self) -> None:
-        meta = infer_metadata("docs/knowledge/runbook-pod-kill.md", "# Phase 5\nrecommendationservice critical restart", {})
+        meta = infer_metadata("docs/knowledge/runbook-pod-kill.md", "# Phase 5\ncatalogue critical restart", {})
         self.assertEqual(meta["document_type"], "runbook")
         self.assertEqual(meta["phase"], "phase-5")
-        self.assertEqual(meta["service"], "recommendationservice")
+        self.assertEqual(meta["service"], "catalogue")
         self.assertEqual(meta["severity"], "critical")
 
     def test_context_pack_includes_sources(self) -> None:
@@ -55,13 +55,13 @@ class Phase5CoreTests(unittest.TestCase):
         self.assertIn("No relevant knowledge found", pack["suggested_context_summary"])
 
     def test_search_request_models_validate(self) -> None:
-        req = KnowledgeSearchRequest(query="pod restart", limit=5, filters={"service": "cartservice", "tags": ["runbook"]})
-        self.assertEqual(req.filters.service, "cartservice")
+        req = KnowledgeSearchRequest(query="pod restart", limit=5, filters={"service": "carts", "tags": ["runbook"]})
+        self.assertEqual(req.filters.service, "carts")
         with self.assertRaises(ValidationError):
             KnowledgeSearchRequest(query="", limit=5)
 
     def test_ingestion_run_records_are_buildable(self) -> None:
-        doc = build_document("# Incident\n\nroot cause cartservice", "clickhouse/incidents/i1.json", "incident_history", metadata={"severity": "high"})
+        doc = build_document("# Incident\n\nroot cause carts", "clickhouse/incidents/i1.json", "incident_history", metadata={"severity": "high"})
         chunk = chunk_document(doc)[0]
         self.assertEqual(doc.source_type, "incident_history")
         self.assertEqual(chunk["severity"], "high")

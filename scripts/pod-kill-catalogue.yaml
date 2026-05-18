@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
 metadata:
-  name: kill-cartservice-once
+  name: kill-catalogue-once
   namespace: chaos-mesh
 spec:
   action: pod-kill
@@ -10,5 +10,5 @@ spec:
     namespaces:
       - cascade-targets
     labelSelectors:
-      app: cartservice
+      app: catalogue
   duration: "30s"

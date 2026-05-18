@@ -39,6 +39,8 @@ spec:
               value: redpanda.cascade-system.svc.cluster.local:9092
             - name: AGENT_EVENTS_TOPIC
               value: agent.investigations
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

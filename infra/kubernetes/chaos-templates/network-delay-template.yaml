@@ -15,7 +15,7 @@ spec:
     namespaces:
       - cascade-targets
     labelSelectors:
-      app: recommendationservice
+      app: catalogue
   delay:
     latency: 200ms
     correlation: "25"

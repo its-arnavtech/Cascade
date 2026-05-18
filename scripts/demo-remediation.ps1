@@ -1,6 +1,6 @@
 param(
     [string]$Namespace = "cascade-system",
-    [string]$Service = "recommendationservice",
+    [string]$Service = "catalogue",
     [ValidateSet("manual", "anomaly", "investigation", "chaos")]
     [string]$TriggerType = "manual",
     [switch]$DryRunOnly = $true,

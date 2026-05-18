@@ -15,9 +15,9 @@ class Phase4CoreTests(unittest.TestCase):
         event = {
             "event_id": "e1",
             "observed_at": "2026-05-13 18:00:01.000",
-            "service": "cartservice",
+            "service": "carts",
             "namespace": "cascade-targets",
-            "workload": "cartservice",
+            "workload": "carts",
             "health_status": "warning",
             "numeric_features_json": '{"cpu_percent":10,"memory_mib":50,"restart_count":1}',
         }
@@ -41,13 +41,13 @@ class Phase4CoreTests(unittest.TestCase):
         self.assertFalse(result.is_anomaly)
 
     def test_zscore_handles_zero_std(self) -> None:
-        history = [{"service": "cartservice", "window_id": f"w{i}", "event_count": 5} for i in range(4)]
-        result = zscore_detect({"service": "cartservice", "window_id": "current", "event_count": 5}, history)
+        history = [{"service": "carts", "window_id": f"w{i}", "event_count": 5} for i in range(4)]
+        result = zscore_detect({"service": "carts", "window_id": "current", "event_count": 5}, history)
         self.assertFalse(result.is_anomaly)
 
     def test_zscore_detects_spike(self) -> None:
-        history = [{"service": "cartservice", "window_id": f"w{i}", "event_count": 5 + i} for i in range(5)]
-        result = zscore_detect({"service": "cartservice", "window_id": "current", "event_count": 50}, history, threshold=2.0)
+        history = [{"service": "carts", "window_id": f"w{i}", "event_count": 5 + i} for i in range(5)]
+        result = zscore_detect({"service": "carts", "window_id": "current", "event_count": 50}, history, threshold=2.0)
         self.assertTrue(result.is_anomaly)
 
     def test_isolation_forest_handles_insufficient_history(self) -> None:

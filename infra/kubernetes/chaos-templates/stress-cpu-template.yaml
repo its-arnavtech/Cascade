@@ -14,7 +14,7 @@ spec:
     namespaces:
       - cascade-targets
     labelSelectors:
-      app: recommendationservice
+      app: catalogue
   stressors:
     cpu:
       workers: 1

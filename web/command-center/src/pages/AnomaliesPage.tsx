@@ -28,7 +28,7 @@ export function AnomaliesPage() {
       trigger_type: "anomaly",
       trigger_id: id,
       service: row.service ?? "",
-      namespace: row.namespace ?? "cascade-targets",
+      namespace: row.namespace,
       objective: `Investigate anomaly for ${row.service ?? "service"}`,
       mode: "deterministic",
       max_steps: 12,
@@ -38,7 +38,7 @@ export function AnomaliesPage() {
   return (
     <div className="page">
       <div className="page-heading"><div><h2>Anomalies</h2><p>Detected model and threshold signals, with safe investigation creation.</p></div></div>
-      <div className="filters"><div className="form-field"><label htmlFor="anomaly-service">Service</label><input id="anomaly-service" placeholder="recommendationservice" value={service} onChange={(e) => setService(e.target.value)} /></div></div>
+      <div className="filters"><div className="form-field"><label htmlFor="anomaly-service">Service</label><input id="anomaly-service" placeholder="service from topology" value={service} onChange={(e) => setService(e.target.value)} /></div></div>
       <StatusPanel title="Recent Anomalies" loading={anomalies.isLoading} error={anomalies.error}>
         <DataTable
           caption="Recent anomalies"

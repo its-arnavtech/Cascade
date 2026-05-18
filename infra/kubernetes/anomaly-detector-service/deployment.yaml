@@ -41,6 +41,8 @@ spec:
               value: "20"
             - name: ANOMALY_PUBLISH_THRESHOLD
               value: "0.4"
+            - name: WEB_CONCURRENCY
+              value: "1"
           resources:
             requests:
               cpu: "250m"
@@ -60,4 +62,3 @@ spec:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 20
-

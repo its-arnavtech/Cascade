@@ -39,6 +39,8 @@ spec:
               value: http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018
             - name: KNOWLEDGE_RETRIEVAL_SERVICE_URL
               value: http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

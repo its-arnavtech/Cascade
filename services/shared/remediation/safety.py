@@ -25,12 +25,19 @@ def validate_plan(
     action_type = str(plan.get("action_type") or "")
     evidence = plan.get("evidence_refs") or []
     rollback = plan.get("rollback_steps") or []
+    post_checks = _post_checks(plan)
     manifest = plan.get("dry_run_manifest") or {}
 
     if namespace in policy.denied_namespaces:
         violations.append(f"Namespace '{namespace}' is denied for remediation")
     if namespace not in policy.allowed_namespaces:
         violations.append(f"Namespace '{namespace}' is not allowlisted")
+    if _contains_wildcard(namespace) or _contains_wildcard(service):
+        violations.append("Wildcard namespaces and services are not allowed")
+    if service in policy.denied_services:
+        violations.append(f"Service '{service}' is denied for remediation")
+    if service in policy.protected_services:
+        violations.append(f"Service '{service}' is protected from remediation")
     if service and service not in policy.allowed_services:
         violations.append(f"Service '{service}' is not allowlisted")
     if action_type not in policy.supported_action_types:
@@ -39,8 +46,12 @@ def validate_plan(
         violations.append("Evidence references are required before remediation can be recommended")
     if _has_broad_selector(plan):
         violations.append("Broad selectors are not allowed")
+    if _contains_wildcard(plan.get("selector") or {}):
+        violations.append("Wildcard selectors are not allowed")
     if _mutates_denied_kind(manifest, policy):
         violations.append("Secrets, ConfigMaps, RBAC, service accounts, and namespaces cannot be mutated")
+    if action_type == "cleanup_cascade_chaos_resource" and not _has_required_cleanup_labels(manifest, policy):
+        violations.append("Cascade chaos cleanup requires managed phase7 labels")
     if not dry_run:
         if policy.require_approval_for_execution and not approved:
             violations.append("Real remediation execution requires a valid human approval")
@@ -50,6 +61,8 @@ def validate_plan(
             violations.append(f"Action type '{action_type}' is not executable")
         if policy.require_rollback_for_execution and not rollback:
             violations.append("Rollback steps are required before execution")
+        if policy.require_post_checks_for_execution and not post_checks:
+            violations.append("Post-checks are required before execution")
 
     if not violations:
         findings.append("Action is bounded by deny-by-default remediation policy")
@@ -77,7 +90,8 @@ def _has_broad_selector(plan: dict[str, Any]) -> bool:
     selector = plan.get("selector") or {}
     if selector:
         labels = selector.get("matchLabels") or selector.get("labelSelectors") or {}
-        return not labels or "*" in labels.values()
+        namespaces = selector.get("namespaces") or []
+        return not labels or _contains_wildcard(labels) or _contains_wildcard(namespaces)
     action_type = str(plan.get("action_type") or "")
     return action_type in {"restart_deployment", "scale_deployment_noop"} and not str(plan.get("service") or "")
 
@@ -85,6 +99,28 @@ def _has_broad_selector(plan: dict[str, Any]) -> bool:
 def _mutates_denied_kind(manifest: dict[str, Any], policy: RemediationPolicy) -> bool:
     kind = str(manifest.get("kind") or "")
     return kind in set(policy.denied_resource_kinds)
+
+
+def _has_required_cleanup_labels(manifest: dict[str, Any], policy: RemediationPolicy) -> bool:
+    labels = manifest.get("metadata", {}).get("labels", {})
+    return all(labels.get(key) == value for key, value in policy.cascade_chaos_cleanup_labels.items())
+
+
+def _post_checks(plan: dict[str, Any]) -> list[Any]:
+    checks = plan.get("post_checks")
+    if checks is None:
+        checks = (plan.get("plan") or {}).get("post_checks")
+    return checks or []
+
+
+def _contains_wildcard(value: Any) -> bool:
+    if isinstance(value, str):
+        return "*" in value
+    if isinstance(value, dict):
+        return any(_contains_wildcard(key) or _contains_wildcard(item) for key, item in value.items())
+    if isinstance(value, list | tuple | set):
+        return any(_contains_wildcard(item) for item in value)
+    return False
 
 
 def _risk_score(violations: list[str], action_type: str, has_evidence: bool) -> float:

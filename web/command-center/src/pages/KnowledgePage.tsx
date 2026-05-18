@@ -9,7 +9,7 @@ export function KnowledgePage() {
   const stats = useKnowledgeStats();
   const search = useKnowledgeSearch();
   const context = useKnowledgeContext();
-  const [query, setQuery] = useState("recommendationservice latency runbook");
+  const [query, setQuery] = useState("");
   const [service, setService] = useState("");
   const [area, setArea] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -42,7 +42,7 @@ export function KnowledgePage() {
       </div>
       <form className="knowledge-search" onSubmit={submit}>
         <div className="form-field full"><label htmlFor="knowledge-query">Query</label><textarea id="knowledge-query" rows={3} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Describe the reliability question or runbook topic" />{!query.trim() ? <span className="hint">Enter a search query</span> : null}</div>
-        <div className="form-field"><label htmlFor="knowledge-service">Service</label><input id="knowledge-service" value={service} onChange={(e) => setService(e.target.value)} placeholder="recommendationservice" /></div>
+        <div className="form-field"><label htmlFor="knowledge-service">Service</label><input id="knowledge-service" value={service} onChange={(e) => setService(e.target.value)} placeholder="service from topology" /></div>
         <div className="form-field"><label htmlFor="knowledge-area">Area</label><input id="knowledge-area" value={area} onChange={(e) => setArea(e.target.value)} placeholder="command-center" /></div>
         <button type="submit" disabled={!query.trim()}>Search</button>
       </form>
@@ -65,7 +65,7 @@ export function KnowledgePage() {
         />
       </StatusPanel>
       <StatusPanel title="Context Pack" loading={context.isPending} error={context.error}>
-        <ContextPack value={context.data ?? { query, evidence_chunks: [], sources: [], limitations: ["Run a search to build a deterministic context pack."] }} showRaw={showRawContext} onToggleRaw={() => setShowRawContext((value) => !value)} />
+        <ContextPack value={context.data ?? { query, evidence_chunks: [], sources: [], limitations: ["No data returned. Run a search to build a deterministic context pack."] }} showRaw={showRawContext} onToggleRaw={() => setShowRawContext((value) => !value)} />
       </StatusPanel>
     </div>
   );

@@ -9,9 +9,12 @@ def is_approval_current(row: dict[str, Any] | None) -> bool:
         return False
     expires_at = row.get("expires_at")
     if not expires_at:
-        return True
+        return False
     try:
-        return datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")).astimezone(UTC) > datetime.now(UTC)
+        expires = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        return expires.astimezone(UTC) > datetime.now(UTC)
     except Exception:
-        return True
+        return False
 

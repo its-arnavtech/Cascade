@@ -35,6 +35,8 @@ spec:
               value: "30"
             - name: FEATURE_BACKGROUND_ENABLED
               value: "false"
+            - name: WEB_CONCURRENCY
+              value: "1"
           resources:
             requests:
               cpu: "100m"
@@ -54,4 +56,3 @@ spec:
               port: http
             initialDelaySeconds: 20
             periodSeconds: 20
-

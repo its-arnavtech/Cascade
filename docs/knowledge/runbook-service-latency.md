@@ -18,4 +18,4 @@ Use this runbook when a service has elevated request latency or dependency slowd
 
 ## Relevant Services
 
-For Online Boutique, latency symptoms often involve `frontend`, `checkoutservice`, `recommendationservice`, `productcatalogservice`, or `cartservice`.
+For Sock Shop, latency symptoms often involve `front-end`, `catalogue`, `carts`, `orders`, `payment`, `shipping`, or `user`.

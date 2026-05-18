@@ -1,0 +1,2609 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda
+  namespace: cascade-system
+  labels:
+    app: redpanda
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: redpandadata/redpanda:v24.3.5
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: kafka
+              containerPort: 9092
+          command:
+            - rpk
+          args:
+            - redpanda
+            - start
+            - --mode
+            - dev-container
+            - --overprovisioned
+            - --default-log-level=warn
+            - --smp
+            - "1"
+            - --memory
+            - 768M
+            - --reserve-memory
+            - 0M
+            - --kafka-addr
+            - PLAINTEXT://0.0.0.0:9092
+            - --advertise-kafka-addr
+            - PLAINTEXT://redpanda.cascade-system.svc.cluster.local:9092
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+          startupProbe:
+            tcpSocket:
+              port: kafka
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: kafka
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: kafka
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            failureThreshold: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: cascade-system
+  labels:
+    app: redpanda
+spec:
+  type: ClusterIP
+  selector:
+    app: redpanda
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: kafka
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: redpanda-topics-init
+  namespace: cascade-system
+  labels:
+    app: redpanda-topics-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: redpanda-topics-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: topics-init
+          image: redpandadata/redpanda:v24.3.5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDPANDA_BROKERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              until rpk -X brokers="${REDPANDA_BROKERS}" cluster info >/dev/null 2>&1; do
+                echo "Waiting for Redpanda Kafka API at ${REDPANDA_BROKERS}..."
+                sleep 5
+              done
+
+              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments remediation.actions causality.reports; do
+                rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" || true
+              done
+
+              rpk -X brokers="${REDPANDA_BROKERS}" topic list
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clickhouse
+  namespace: cascade-system
+  labels:
+    app: clickhouse
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: clickhouse
+  template:
+    metadata:
+      labels:
+        app: clickhouse
+    spec:
+      containers:
+        - name: clickhouse
+          image: clickhouse/clickhouse-server:24.8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8123
+            - name: native
+              containerPort: 9000
+          env:
+            - name: CLICKHOUSE_DB
+              value: cascade
+            - name: CLICKHOUSE_USER
+              value: default
+            - name: CLICKHOUSE_PASSWORD
+              value: ""
+            - name: CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT
+              value: "1"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clickhouse
+  namespace: cascade-system
+  labels:
+    app: clickhouse
+spec:
+  type: ClusterIP
+  selector:
+    app: clickhouse
+  ports:
+    - name: http
+      port: 8123
+      targetPort: http
+    - name: native
+      port: 9000
+      targetPort: native
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: clickhouse-schema-init
+  namespace: cascade-system
+  labels:
+    app: clickhouse-schema-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: clickhouse-schema-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: clickhouse/clickhouse-server:24.8
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -lc
+          args:
+            - |
+              set -euo pipefail
+              until clickhouse-client --host clickhouse --query "SELECT 1"; do sleep 3; done
+              clickhouse-client --host clickhouse --multiquery <<'SQL'
+              CREATE DATABASE IF NOT EXISTS cascade;
+              CREATE TABLE IF NOT EXISTS cascade.telemetry_events (
+                  event_id String,
+                  observed_at DateTime64(3),
+                  ingested_at DateTime64(3),
+                  source_topic String,
+                  event_type String,
+                  namespace String,
+                  service String,
+                  workload String,
+                  pod String,
+                  severity String,
+                  health_status String,
+                  experiment_id String,
+                  trace_id String,
+                  raw_json String,
+                  enriched_json String,
+                  labels_json String,
+                  numeric_features_json String
+              ) ENGINE = MergeTree ORDER BY (service, observed_at, event_id);
+              CREATE TABLE IF NOT EXISTS cascade.experiment_events (
+                  event_id String,
+                  experiment_id String,
+                  experiment_type String,
+                  target_namespace String,
+                  target_service String,
+                  target_workload String,
+                  status String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  observed_at DateTime64(3),
+                  ingested_at DateTime64(3),
+                  source_topic String,
+                  event_json String
+              ) ENGINE = MergeTree ORDER BY (experiment_id, observed_at, event_id);
+              CREATE TABLE IF NOT EXISTS cascade.incidents (
+                  incident_id String,
+                  experiment_id String,
+                  root_cause_service String,
+                  root_cause_summary String,
+                  severity String,
+                  status String,
+                  confidence Float64,
+                  first_seen_at DateTime64(3),
+                  last_seen_at DateTime64(3),
+                  created_at DateTime64(3),
+                  affected_services_json String,
+                  causal_chain_json String,
+                  evidence_json String,
+                  incident_json String
+              ) ENGINE = MergeTree ORDER BY (root_cause_service, first_seen_at, incident_id);
+              CREATE TABLE IF NOT EXISTS cascade.incident_reports (
+                  report_id String,
+                  incident_id String,
+                  experiment_id String,
+                  generated_at DateTime64(3),
+                  root_cause_service String,
+                  severity String,
+                  markdown_report String,
+                  report_json String
+              ) ENGINE = MergeTree ORDER BY (root_cause_service, generated_at, report_id);
+              CREATE TABLE IF NOT EXISTS cascade.topology_snapshots (
+                  snapshot_id String,
+                  captured_at DateTime64(3),
+                  topology_json String,
+                  service_count UInt64,
+                  edge_count UInt64
+              ) ENGINE = MergeTree ORDER BY (captured_at, snapshot_id);
+              CREATE TABLE IF NOT EXISTS cascade.telemetry_feature_windows (
+                  window_id String,
+                  service String,
+                  namespace String,
+                  workload String,
+                  window_start DateTime64(3),
+                  window_end DateTime64(3),
+                  extracted_at DateTime64(3),
+                  event_count UInt64,
+                  unhealthy_count UInt64,
+                  healthy_count UInt64,
+                  restart_signal_count UInt64,
+                  warning_count UInt64,
+                  error_count UInt64,
+                  experiment_event_count UInt64,
+                  incident_context_count UInt64,
+                  avg_cpu Float64,
+                  max_cpu Float64,
+                  avg_memory Float64,
+                  max_memory Float64,
+                  avg_latency_ms Float64,
+                  max_latency_ms Float64,
+                  error_rate Float64,
+                  restart_rate Float64,
+                  unhealthy_rate Float64,
+                  feature_vector_json String,
+                  source_query_hash String
+              ) ENGINE = MergeTree ORDER BY (service, window_start, window_id);
+              CREATE TABLE IF NOT EXISTS cascade.anomaly_events (
+                  anomaly_id String,
+                  detected_at DateTime64(3),
+                  window_id String,
+                  service String,
+                  namespace String,
+                  workload String,
+                  window_start DateTime64(3),
+                  window_end DateTime64(3),
+                  severity String,
+                  status String,
+                  anomaly_score Float64,
+                  risk_score Float64,
+                  model_name String,
+                  model_version String,
+                  detector_type String,
+                  is_anomaly UInt8,
+                  explanation String,
+                  evidence_json String,
+                  feature_vector_json String,
+                  related_experiment_id String,
+                  published_to_redpanda UInt8
+              ) ENGINE = MergeTree ORDER BY (service, detected_at, anomaly_id);
+              CREATE TABLE IF NOT EXISTS cascade.causal_reports (
+                  report_id String,
+                  generated_at DateTime64(3),
+                  target_service String,
+                  target_feature String,
+                  source_feature String,
+                  status String,
+                  summary String,
+                  window_start Nullable(DateTime64(3)),
+                  window_end Nullable(DateTime64(3)),
+                  candidate_count UInt64,
+                  methodology_json String,
+                  limitations_json String,
+                  report_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (generated_at, report_id);
+              CREATE TABLE IF NOT EXISTS cascade.causal_candidates (
+                  report_id String,
+                  candidate_id String,
+                  generated_at DateTime64(3),
+                  rank UInt64,
+                  source_service String,
+                  target_service String,
+                  source_feature String,
+                  target_feature String,
+                  status String,
+                  rank_score Float64,
+                  best_p_value Nullable(Float64),
+                  effect_size Float64,
+                  lag_windows UInt64,
+                  sample_count UInt64,
+                  pearson_json String,
+                  spearman_json String,
+                  granger_json String,
+                  topology_distance Nullable(Int64),
+                  anomaly_context_json String,
+                  limitations_json String,
+                  candidate_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (report_id, rank, candidate_id);
+              CREATE TABLE IF NOT EXISTS cascade.model_runs (
+                  run_id String,
+                  started_at DateTime64(3),
+                  completed_at DateTime64(3),
+                  model_name String,
+                  model_version String,
+                  detector_type String,
+                  windows_scored UInt64,
+                  anomalies_detected UInt64,
+                  status String,
+                  config_json String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_documents (
+                  document_id String,
+                  source_type String,
+                  document_type String,
+                  title String,
+                  source_path String,
+                  source_uri String,
+                  content_hash String,
+                  ingested_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  phase String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  tags_json String,
+                  metadata_json String,
+                  raw_content String
+              ) ENGINE = ReplacingMergeTree(updated_at)
+              ORDER BY (source_type, document_type, document_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_chunks (
+                  chunk_id String,
+                  document_id String,
+                  chunk_index UInt64,
+                  source_type String,
+                  document_type String,
+                  title String,
+                  source_path String,
+                  content_hash String,
+                  chunk_hash String,
+                  ingested_at DateTime64(3),
+                  phase String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  tags_json String,
+                  metadata_json String,
+                  chunk_text String,
+                  embedding_model String,
+                  qdrant_collection String,
+                  qdrant_point_id String
+              ) ENGINE = ReplacingMergeTree(ingested_at)
+              ORDER BY (source_type, document_type, document_id, chunk_index, chunk_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_ingestion_runs (
+                  run_id String,
+                  started_at DateTime64(3),
+                  completed_at DateTime64(3),
+                  source String,
+                  source_type String,
+                  documents_seen UInt64,
+                  documents_ingested UInt64,
+                  chunks_created UInt64,
+                  chunks_indexed UInt64,
+                  status String,
+                  config_json String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.knowledge_queries (
+                  query_id String,
+                  queried_at DateTime64(3),
+                  query_text String,
+                  filters_json String,
+                  result_count UInt64,
+                  top_score Float64,
+                  latency_ms Float64,
+                  response_json String
+              ) ENGINE = MergeTree ORDER BY (queried_at, query_id);
+              CREATE TABLE IF NOT EXISTS cascade.investigation_runs (
+                  investigation_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  mode String,
+                  trigger_type String,
+                  trigger_id String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  risk_score Float64,
+                  title String,
+                  objective String,
+                  final_summary String,
+                  confidence Float64,
+                  tools_used_json String,
+                  evidence_refs_json String,
+                  config_json String,
+                  error_message String
+              ) ENGINE = ReplacingMergeTree(updated_at)
+              ORDER BY (created_at, investigation_id);
+              CREATE TABLE IF NOT EXISTS cascade.agent_steps (
+                  step_id String,
+                  investigation_id String,
+                  created_at DateTime64(3),
+                  node_name String,
+                  agent_role String,
+                  step_type String,
+                  status String,
+                  input_json String,
+                  output_json String,
+                  tool_name String,
+                  tool_latency_ms Float64,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (investigation_id, created_at, step_id);
+              CREATE TABLE IF NOT EXISTS cascade.investigation_reports (
+                  report_id String,
+                  investigation_id String,
+                  generated_at DateTime64(3),
+                  title String,
+                  summary String,
+                  suspected_root_cause String,
+                  affected_services_json String,
+                  evidence_json String,
+                  timeline_json String,
+                  anomaly_refs_json String,
+                  knowledge_refs_json String,
+                  recommended_next_steps_json String,
+                  suggested_remediation_json String,
+                  confidence Float64,
+                  markdown_report String,
+                  report_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (investigation_id, generated_at, report_id);
+              CREATE TABLE IF NOT EXISTS cascade.agent_tool_calls (
+                  call_id String,
+                  investigation_id String,
+                  called_at DateTime64(3),
+                  tool_name String,
+                  target_service String,
+                  status String,
+                  latency_ms Float64,
+                  request_json String,
+                  response_summary String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (investigation_id, called_at, call_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_experiment_plans (
+                  plan_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  status String,
+                  plan_type String,
+                  experiment_kind String,
+                  target_namespace String,
+                  target_service String,
+                  target_workload String,
+                  target_selector_json String,
+                  duration_seconds UInt64,
+                  blast_radius_score Float64,
+                  safety_score Float64,
+                  risk_level String,
+                  objective String,
+                  hypothesis String,
+                  expected_impact String,
+                  safety_policy_json String,
+                  manifest_json String,
+                  plan_json String
+              ) ENGINE = ReplacingMergeTree(updated_at)
+              ORDER BY (created_at, plan_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_experiment_runs (
+                  run_id String,
+                  plan_id String,
+                  experiment_id String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  dry_run UInt8,
+                  approved UInt8,
+                  experiment_kind String,
+                  target_namespace String,
+                  target_service String,
+                  target_workload String,
+                  chaos_resource_name String,
+                  chaos_resource_uid String,
+                  duration_seconds UInt64,
+                  cleanup_status String,
+                  error_message String,
+                  run_json String
+              ) ENGINE = ReplacingMergeTree(started_at)
+              ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_observations (
+                  observation_id String,
+                  run_id String,
+                  plan_id String,
+                  observed_at DateTime64(3),
+                  observation_window_seconds UInt64,
+                  telemetry_events_count UInt64,
+                  anomaly_events_count UInt64,
+                  incidents_count UInt64,
+                  investigation_id String,
+                  affected_services_json String,
+                  telemetry_summary_json String,
+                  anomaly_summary_json String,
+                  incident_summary_json String,
+                  observation_json String
+              ) ENGINE = MergeTree ORDER BY (run_id, observed_at, observation_id);
+              CREATE TABLE IF NOT EXISTS cascade.resilience_scores (
+                  score_id String,
+                  run_id String,
+                  plan_id String,
+                  computed_at DateTime64(3),
+                  service String,
+                  namespace String,
+                  experiment_kind String,
+                  resilience_score Float64,
+                  recovery_score Float64,
+                  blast_radius_score Float64,
+                  anomaly_penalty Float64,
+                  incident_penalty Float64,
+                  evidence_score Float64,
+                  grade String,
+                  explanation String,
+                  recommendations_json String,
+                  score_json String
+              ) ENGINE = ReplacingMergeTree(computed_at)
+              ORDER BY (service, computed_at, score_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_safety_violations (
+                  violation_id String,
+                  created_at DateTime64(3),
+                  plan_id String,
+                  run_id String,
+                  violation_type String,
+                  severity String,
+                  message String,
+                  policy_json String,
+                  request_json String
+              ) ENGINE = MergeTree ORDER BY (created_at, violation_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_policy_audit (
+                  audit_id String,
+                  checked_at DateTime64(3),
+                  plan_id String,
+                  experiment_kind String,
+                  namespace String,
+                  service String,
+                  allowed UInt8,
+                  risk_level String,
+                  findings_json String,
+                  policy_json String
+              ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_plans (
+                  plan_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  status String,
+                  trigger_type String,
+                  trigger_id String,
+                  source_investigation_id String,
+                  source_anomaly_id String,
+                  source_incident_id String,
+                  source_chaos_run_id String,
+                  service String,
+                  namespace String,
+                  severity String,
+                  risk_score Float64,
+                  confidence Float64,
+                  action_type String,
+                  action_summary String,
+                  remediation_steps_json String,
+                  rollback_steps_json String,
+                  evidence_refs_json String,
+                  safety_findings_json String,
+                  dry_run_manifest_json String,
+                  plan_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (created_at, plan_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_approvals (
+                  approval_id String,
+                  plan_id String,
+                  decided_at DateTime64(3),
+                  decision String,
+                  approver String,
+                  approver_role String,
+                  reason String,
+                  expires_at Nullable(DateTime64(3)),
+                  approval_metadata_json String
+              ) ENGINE = MergeTree ORDER BY (plan_id, decided_at, approval_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_executions (
+                  execution_id String,
+                  plan_id String,
+                  approval_id String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  dry_run UInt8,
+                  executed UInt8,
+                  action_type String,
+                  namespace String,
+                  service String,
+                  resource_kind String,
+                  resource_name String,
+                  validation_status String,
+                  execution_status String,
+                  rollback_available UInt8,
+                  output_summary String,
+                  error_message String,
+                  execution_json String
+              ) ENGINE = ReplacingMergeTree(started_at) ORDER BY (started_at, execution_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_safety_violations (
+                  violation_id String,
+                  created_at DateTime64(3),
+                  plan_id String,
+                  execution_id String,
+                  violation_type String,
+                  severity String,
+                  message String,
+                  policy_json String,
+                  request_json String
+              ) ENGINE = MergeTree ORDER BY (created_at, violation_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_policy_audit (
+                  audit_id String,
+                  checked_at DateTime64(3),
+                  plan_id String,
+                  action_type String,
+                  namespace String,
+                  service String,
+                  allowed UInt8,
+                  risk_level String,
+                  findings_json String,
+                  policy_json String
+              ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
+              SQL
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qdrant
+  namespace: cascade-system
+  labels:
+    app: qdrant
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:v1.12.6
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 6333
+          env:
+            - name: QDRANT__SERVICE__MAX_WORKERS
+              value: "2"
+            - name: QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS
+              value: "2"
+            - name: QDRANT__STORAGE__OPTIMIZERS__MAX_OPTIMIZATION_THREADS
+              value: "1"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: cascade-system
+  labels:
+    app: qdrant
+spec:
+  type: ClusterIP
+  selector:
+    app: qdrant
+  ports:
+    - name: http
+      port: 6333
+      targetPort: http
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qdrant-collection-init
+  namespace: cascade-system
+  labels:
+    app: qdrant-collection-init
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: qdrant-collection-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: curlimages/curl:8.11.1
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+          args:
+            - |
+              set -eu
+              until curl -sf http://qdrant:6333/readyz; do sleep 3; done
+              code="$(curl -s -o /tmp/qdrant-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_incident_memory \
+                -H 'Content-Type: application/json' \
+                --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
+              if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
+                cat /tmp/qdrant-init-response
+              else
+                cat /tmp/qdrant-init-response
+                exit 1
+              fi
+              code="$(curl -s -o /tmp/qdrant-knowledge-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_knowledge_base \
+                -H 'Content-Type: application/json' \
+                --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
+              if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
+                cat /tmp/qdrant-knowledge-init-response
+                exit 0
+              fi
+              cat /tmp/qdrant-knowledge-init-response
+              exit 1
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: observation-service
+  namespace: cascade-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: observation-service-pod-reader
+  namespace: cascade-targets
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: observation-service-pod-reader
+  namespace: cascade-targets
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: observation-service-pod-reader
+subjects:
+  - kind: ServiceAccount
+    name: observation-service
+    namespace: cascade-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: observation-service
+  namespace: cascade-system
+  labels:
+    app: observation-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: observation-service
+  template:
+    metadata:
+      labels:
+        app: observation-service
+    spec:
+      serviceAccountName: observation-service
+      containers:
+        - name: observation-service
+          image: cascade-observation-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: PROMETHEUS_URL
+              value: http://prometheus-stack-kube-prom-prometheus.monitoring.svc.cluster.local:9090
+            - name: TARGET_NAMESPACE
+              value: cascade-targets
+            - name: TELEMETRY_PUBLISH_ENABLED
+              value: "true"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: KAFKA_RAW_TOPIC
+              value: telemetry.raw
+            - name: TELEMETRY_PUBLISH_INTERVAL_SECONDS
+              value: "10"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observation-service
+  namespace: cascade-system
+  labels:
+    app: observation-service
+spec:
+  type: ClusterIP
+  selector:
+    app: observation-service
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stream-enricher
+  namespace: cascade-system
+  labels:
+    app: stream-enricher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stream-enricher
+  template:
+    metadata:
+      labels:
+        app: stream-enricher
+    spec:
+      containers:
+        - name: stream-enricher
+          image: cascade-stream-enricher:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8001
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: KAFKA_RAW_TOPIC
+              value: telemetry.raw
+            - name: KAFKA_ENRICHED_TOPIC
+              value: telemetry.enriched
+            - name: KAFKA_CONSUMER_GROUP
+              value: stream-enricher
+            - name: HIGH_MEMORY_THRESHOLD_BYTES
+              value: "536870912"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stream-enricher
+  namespace: cascade-system
+  labels:
+    app: stream-enricher
+spec:
+  type: ClusterIP
+  selector:
+    app: stream-enricher
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: experiment-tracker-service
+  namespace: cascade-system
+  labels:
+    app: experiment-tracker-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: experiment-tracker-service
+  template:
+    metadata:
+      labels:
+        app: experiment-tracker-service
+    spec:
+      containers:
+        - name: experiment-tracker-service
+          image: cascade-experiment-tracker-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8002
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: EXPERIMENT_TOPIC
+              value: experiments.events
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: experiment-tracker-service
+  namespace: cascade-system
+  labels:
+    app: experiment-tracker-service
+spec:
+  type: ClusterIP
+  selector:
+    app: experiment-tracker-service
+  ports:
+    - name: http
+      port: 8002
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: causal-reconstruction-service
+  namespace: cascade-system
+  labels:
+    app: causal-reconstruction-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: causal-reconstruction-service
+  template:
+    metadata:
+      labels:
+        app: causal-reconstruction-service
+    spec:
+      containers:
+        - name: causal-reconstruction-service
+          image: cascade-causal-reconstruction-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8005
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: EXPERIMENT_TOPIC
+              value: experiments.events
+            - name: ENRICHED_TOPIC
+              value: telemetry.enriched
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: causal-reconstruction-service
+  namespace: cascade-system
+  labels:
+    app: causal-reconstruction-service
+spec:
+  type: ClusterIP
+  selector:
+    app: causal-reconstruction-service
+  ports:
+    - name: http
+      port: 8005
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: topology-service
+  namespace: cascade-system
+  labels:
+    app: topology-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: topology-service
+  template:
+    metadata:
+      labels:
+        app: topology-service
+    spec:
+      containers:
+        - name: topology-service
+          image: cascade-topology-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8004
+          env:
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: topology-service
+  namespace: cascade-system
+  labels:
+    app: topology-service
+spec:
+  type: ClusterIP
+  selector:
+    app: topology-service
+  ports:
+    - name: http
+      port: 8004
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-timeline-service
+  namespace: cascade-system
+  labels:
+    app: incident-timeline-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: incident-timeline-service
+  template:
+    metadata:
+      labels:
+        app: incident-timeline-service
+    spec:
+      containers:
+        - name: incident-timeline-service
+          image: cascade-incident-timeline-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8006
+          env:
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: incident-timeline-service
+  namespace: cascade-system
+  labels:
+    app: incident-timeline-service
+spec:
+  type: ClusterIP
+  selector:
+    app: incident-timeline-service
+  ports:
+    - name: http
+      port: 8006
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-archiver
+  namespace: cascade-system
+  labels:
+    app: telemetry-archiver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: telemetry-archiver
+  template:
+    metadata:
+      labels:
+        app: telemetry-archiver
+    spec:
+      containers:
+        - name: telemetry-archiver
+          image: cascade-telemetry-archiver:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8010
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: TELEMETRY_ENRICHED_TOPIC
+              value: telemetry.enriched
+            - name: EXPERIMENTS_EVENTS_TOPIC
+              value: experiments.events
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: telemetry-archiver
+  namespace: cascade-system
+  labels:
+    app: telemetry-archiver
+spec:
+  type: ClusterIP
+  selector:
+    app: telemetry-archiver
+  ports:
+    - name: http
+      port: 8010
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: memory-indexer
+  namespace: cascade-system
+  labels:
+    app: memory-indexer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: memory-indexer
+  template:
+    metadata:
+      labels:
+        app: memory-indexer
+    spec:
+      containers:
+        - name: memory-indexer
+          image: cascade-memory-indexer:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8011
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: TELEMETRY_ENRICHED_TOPIC
+              value: telemetry.enriched
+            - name: EXPERIMENTS_EVENTS_TOPIC
+              value: experiments.events
+            - name: QDRANT_URL
+              value: http://qdrant.cascade-system.svc.cluster.local:6333
+            - name: QDRANT_COLLECTION
+              value: cascade_incident_memory
+            - name: EMBEDDING_DIMENSIONS
+              value: "128"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: memory-indexer
+  namespace: cascade-system
+  labels:
+    app: memory-indexer
+spec:
+  type: ClusterIP
+  selector:
+    app: memory-indexer
+  ports:
+    - name: http
+      port: 8011
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retrieval-service
+  namespace: cascade-system
+  labels:
+    app: retrieval-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: retrieval-service
+  template:
+    metadata:
+      labels:
+        app: retrieval-service
+    spec:
+      containers:
+        - name: retrieval-service
+          image: cascade-retrieval-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8012
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: QDRANT_URL
+              value: http://qdrant.cascade-system.svc.cluster.local:6333
+            - name: QDRANT_COLLECTION
+              value: cascade_incident_memory
+            - name: QDRANT_KNOWLEDGE_COLLECTION
+              value: cascade_knowledge_base
+            - name: EMBEDDING_DIMENSIONS
+              value: "128"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 600m
+              memory: 640Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: retrieval-service
+  namespace: cascade-system
+  labels:
+    app: retrieval-service
+spec:
+  type: ClusterIP
+  selector:
+    app: retrieval-service
+  ports:
+    - name: http
+      port: 8012
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feature-extractor-service
+  namespace: cascade-system
+  labels:
+    app: feature-extractor-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: feature-extractor-service
+  template:
+    metadata:
+      labels:
+        app: feature-extractor-service
+    spec:
+      containers:
+        - name: feature-extractor-service
+          image: cascade-feature-extractor-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8013
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: FEATURE_WINDOW_SECONDS
+              value: "300"
+            - name: FEATURE_LOOKBACK_MINUTES
+              value: "30"
+            - name: FEATURE_BACKGROUND_ENABLED
+              value: "false"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: feature-extractor-service
+  namespace: cascade-system
+  labels:
+    app: feature-extractor-service
+spec:
+  type: ClusterIP
+  selector:
+    app: feature-extractor-service
+  ports:
+    - name: http
+      port: 8013
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anomaly-detector-service
+  namespace: cascade-system
+  labels:
+    app: anomaly-detector-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: anomaly-detector-service
+  template:
+    metadata:
+      labels:
+        app: anomaly-detector-service
+    spec:
+      containers:
+        - name: anomaly-detector-service
+          image: cascade-anomaly-detector-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8014
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: ANOMALIES_TOPIC
+              value: anomalies.detected
+            - name: ANOMALY_BACKGROUND_ENABLED
+              value: "false"
+            - name: ZSCORE_THRESHOLD
+              value: "3.0"
+            - name: ISOLATION_FOREST_MIN_WINDOWS
+              value: "20"
+            - name: ANOMALY_PUBLISH_THRESHOLD
+              value: "0.4"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1500m"
+              memory: "1536Mi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anomaly-detector-service
+  namespace: cascade-system
+  labels:
+    app: anomaly-detector-service
+spec:
+  type: ClusterIP
+  selector:
+    app: anomaly-detector-service
+  ports:
+    - name: http
+      port: 8014
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-ingestion-service
+  namespace: cascade-system
+  labels:
+    app: knowledge-ingestion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledge-ingestion-service
+  template:
+    metadata:
+      labels:
+        app: knowledge-ingestion-service
+    spec:
+      containers:
+        - name: knowledge-ingestion-service
+          image: cascade-knowledge-ingestion-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8015
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: QDRANT_URL
+              value: http://qdrant.cascade-system.svc.cluster.local:6333
+            - name: QDRANT_KNOWLEDGE_COLLECTION
+              value: cascade_knowledge_base
+            - name: EMBEDDING_DIMENSIONS
+              value: "128"
+            - name: KNOWLEDGE_ROOT_PATH
+              value: /app/knowledge
+            - name: CHUNK_SIZE
+              value: "1000"
+            - name: CHUNK_OVERLAP
+              value: "150"
+            - name: KNOWLEDGE_BACKGROUND_ENABLED
+              value: "false"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-ingestion-service
+  namespace: cascade-system
+  labels:
+    app: knowledge-ingestion-service
+spec:
+  selector:
+    app: knowledge-ingestion-service
+  ports:
+    - name: http
+      port: 8015
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: knowledge-retrieval-service
+  namespace: cascade-system
+  labels:
+    app: knowledge-retrieval-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: knowledge-retrieval-service
+  template:
+    metadata:
+      labels:
+        app: knowledge-retrieval-service
+    spec:
+      containers:
+        - name: knowledge-retrieval-service
+          image: cascade-knowledge-retrieval-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8016
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: QDRANT_URL
+              value: http://qdrant.cascade-system.svc.cluster.local:6333
+            - name: QDRANT_KNOWLEDGE_COLLECTION
+              value: cascade_knowledge_base
+            - name: EMBEDDING_DIMENSIONS
+              value: "128"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: knowledge-retrieval-service
+  namespace: cascade-system
+  labels:
+    app: knowledge-retrieval-service
+spec:
+  selector:
+    app: knowledge-retrieval-service
+  ports:
+    - name: http
+      port: 8016
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-tool-gateway
+  namespace: cascade-system
+  labels:
+    app: agent-tool-gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-tool-gateway
+  template:
+    metadata:
+      labels:
+        app: agent-tool-gateway
+    spec:
+      containers:
+        - name: agent-tool-gateway
+          image: cascade-agent-tool-gateway:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8017
+          env:
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: KNOWLEDGE_RETRIEVAL_SERVICE_URL
+              value: http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016
+            - name: TOPOLOGY_SERVICE_URL
+              value: http://topology-service.cascade-system.svc.cluster.local:8004
+            - name: CAUSAL_RECONSTRUCTION_SERVICE_URL
+              value: http://causal-reconstruction-service.cascade-system.svc.cluster.local:8005
+            - name: INCIDENT_TIMELINE_SERVICE_URL
+              value: http://incident-timeline-service.cascade-system.svc.cluster.local:8006
+            - name: ANOMALY_DETECTOR_SERVICE_URL
+              value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
+            - name: CHAOS_EXECUTOR_SERVICE_URL
+              value: http://chaos-executor-service.cascade-system.svc.cluster.local:8020
+            - name: REMEDIATION_RECOMMENDER_SERVICE_URL
+              value: http://remediation-recommender-service.cascade-system.svc.cluster.local:8021
+            - name: REMEDIATION_EXECUTOR_SERVICE_URL
+              value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-tool-gateway
+  namespace: cascade-system
+  labels:
+    app: agent-tool-gateway
+spec:
+  selector:
+    app: agent-tool-gateway
+  ports:
+    - name: http
+      port: 8017
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-orchestrator-service
+  namespace: cascade-system
+  labels:
+    app: agent-orchestrator-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agent-orchestrator-service
+  template:
+    metadata:
+      labels:
+        app: agent-orchestrator-service
+    spec:
+      containers:
+        - name: agent-orchestrator-service
+          image: cascade-agent-orchestrator-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8018
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: AGENT_TOOL_GATEWAY_URL
+              value: http://agent-tool-gateway.cascade-system.svc.cluster.local:8017
+            - name: AGENT_RUNTIME_MODE
+              value: deterministic
+            - name: LLM_PROVIDER
+              value: none
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: AGENT_EVENTS_TOPIC
+              value: agent.investigations
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-orchestrator-service
+  namespace: cascade-system
+  labels:
+    app: agent-orchestrator-service
+spec:
+  selector:
+    app: agent-orchestrator-service
+  ports:
+    - name: http
+      port: 8018
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-planner-service
+  namespace: cascade-system
+  labels:
+    app: chaos-planner-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chaos-planner-service
+  template:
+    metadata:
+      labels:
+        app: chaos-planner-service
+    spec:
+      containers:
+        - name: chaos-planner-service
+          image: cascade-chaos-planner-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8019
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: TOPOLOGY_SERVICE_URL
+              value: http://topology-service.cascade-system.svc.cluster.local:8004
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-planner-service
+  namespace: cascade-system
+  labels:
+    app: chaos-planner-service
+spec:
+  selector:
+    app: chaos-planner-service
+  ports:
+    - name: http
+      port: 8019
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-executor-service
+  namespace: cascade-system
+  labels:
+    app: chaos-executor-service
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-executor-targets
+  namespace: cascade-targets
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["podchaos", "networkchaos", "stresschaos"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-executor-targets
+  namespace: cascade-targets
+subjects:
+  - kind: ServiceAccount
+    name: chaos-executor-service
+    namespace: cascade-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chaos-executor-targets
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-executor-crd-reader
+  labels:
+    app: chaos-executor-service
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    resourceNames: ["podchaos.chaos-mesh.org", "networkchaos.chaos-mesh.org", "stresschaos.chaos-mesh.org"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: chaos-executor-crd-reader
+  labels:
+    app: chaos-executor-service
+subjects:
+  - kind: ServiceAccount
+    name: chaos-executor-service
+    namespace: cascade-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: chaos-executor-crd-reader
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-executor-service
+  namespace: cascade-system
+  labels:
+    app: chaos-executor-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chaos-executor-service
+  template:
+    metadata:
+      labels:
+        app: chaos-executor-service
+    spec:
+      serviceAccountName: chaos-executor-service
+      containers:
+        - name: chaos-executor-service
+          image: cascade-chaos-executor-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8020
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: CHAOS_PLANNER_SERVICE_URL
+              value: http://chaos-planner-service.cascade-system.svc.cluster.local:8019
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: AGENT_ORCHESTRATOR_SERVICE_URL
+              value: http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018
+            - name: EXPERIMENT_TRACKER_SERVICE_URL
+              value: http://experiment-tracker-service.cascade-system.svc.cluster.local:8002
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: CHAOS_EVENTS_TOPIC
+              value: chaos.experiments
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 640Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-executor-service
+  namespace: cascade-system
+  labels:
+    app: chaos-executor-service
+spec:
+  selector:
+    app: chaos-executor-service
+  ports:
+    - name: http
+      port: 8020
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remediation-recommender-service
+  namespace: cascade-system
+  labels:
+    app: remediation-recommender-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: remediation-recommender-service
+  template:
+    metadata:
+      labels:
+        app: remediation-recommender-service
+    spec:
+      containers:
+        - name: remediation-recommender-service
+          image: cascade-remediation-recommender-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8021
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: REMEDIATION_EVENTS_TOPIC
+              value: remediation.actions
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: AGENT_ORCHESTRATOR_SERVICE_URL
+              value: http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018
+            - name: KNOWLEDGE_RETRIEVAL_SERVICE_URL
+              value: http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: remediation-recommender-service
+  namespace: cascade-system
+  labels:
+    app: remediation-recommender-service
+spec:
+  selector:
+    app: remediation-recommender-service
+  ports:
+    - name: http
+      port: 8021
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: approval-service
+  namespace: cascade-system
+  labels:
+    app: approval-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: approval-service
+  template:
+    metadata:
+      labels:
+        app: approval-service
+    spec:
+      containers:
+        - name: approval-service
+          image: cascade-approval-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8022
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: REMEDIATION_EVENTS_TOPIC
+              value: remediation.actions
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 80m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: approval-service
+  namespace: cascade-system
+  labels:
+    app: approval-service
+spec:
+  selector:
+    app: approval-service
+  ports:
+    - name: http
+      port: 8022
+      targetPort: http
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: remediation-executor-service
+  namespace: cascade-system
+  labels:
+    app: remediation-executor-service
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remediation-executor-targets
+  namespace: cascade-targets
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["chaos-mesh.org"]
+    resources: ["podchaos", "networkchaos", "stresschaos"]
+    verbs: ["get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remediation-executor-targets
+  namespace: cascade-targets
+subjects:
+  - kind: ServiceAccount
+    name: remediation-executor-service
+    namespace: cascade-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: remediation-executor-targets
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remediation-executor-service
+  namespace: cascade-system
+  labels:
+    app: remediation-executor-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: remediation-executor-service
+  template:
+    metadata:
+      labels:
+        app: remediation-executor-service
+    spec:
+      serviceAccountName: remediation-executor-service
+      containers:
+        - name: remediation-executor-service
+          image: cascade-remediation-executor-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8023
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: REMEDIATION_EVENTS_TOPIC
+              value: remediation.actions
+            - name: EXECUTION_ENABLED
+              value: "false"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 500m
+              memory: 640Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: remediation-executor-service
+  namespace: cascade-system
+  labels:
+    app: remediation-executor-service
+spec:
+  selector:
+    app: remediation-executor-service
+  ports:
+    - name: http
+      port: 8023
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: command-center-api
+  namespace: cascade-system
+  labels:
+    app: command-center-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: command-center-api
+  template:
+    metadata:
+      labels:
+        app: command-center-api
+    spec:
+      containers:
+        - name: command-center-api
+          image: cascade-command-center-api:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8031
+          env:
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: KNOWLEDGE_RETRIEVAL_SERVICE_URL
+              value: http://knowledge-retrieval-service.cascade-system.svc.cluster.local:8016
+            - name: AGENT_TOOL_GATEWAY_URL
+              value: http://agent-tool-gateway.cascade-system.svc.cluster.local:8017
+            - name: AGENT_ORCHESTRATOR_SERVICE_URL
+              value: http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018
+            - name: CHAOS_PLANNER_SERVICE_URL
+              value: http://chaos-planner-service.cascade-system.svc.cluster.local:8019
+            - name: CHAOS_EXECUTOR_SERVICE_URL
+              value: http://chaos-executor-service.cascade-system.svc.cluster.local:8020
+            - name: REMEDIATION_RECOMMENDER_SERVICE_URL
+              value: http://remediation-recommender-service.cascade-system.svc.cluster.local:8021
+            - name: APPROVAL_SERVICE_URL
+              value: http://approval-service.cascade-system.svc.cluster.local:8022
+            - name: REMEDIATION_EXECUTOR_SERVICE_URL
+              value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
+            - name: ANOMALY_DETECTOR_SERVICE_URL
+              value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
+            - name: FEATURE_EXTRACTOR_SERVICE_URL
+              value: http://feature-extractor-service.cascade-system.svc.cluster.local:8013
+            - name: PROXY_TIMEOUT_SECONDS
+              value: "10"
+            - name: ENABLE_DANGEROUS_ACTIONS
+              value: "false"
+            - name: RATE_LIMIT_ENABLED
+              value: "true"
+            - name: RATE_LIMIT_REQUESTS_PER_MINUTE
+              value: "120"
+            - name: RATE_LIMIT_BURST
+              value: "60"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: command-center-api
+  namespace: cascade-system
+  labels:
+    app: command-center-api
+spec:
+  selector:
+    app: command-center-api
+  ports:
+    - name: http
+      port: 8031
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: command-center
+  namespace: cascade-system
+  labels:
+    app: command-center
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: command-center
+  template:
+    metadata:
+      labels:
+        app: command-center
+    spec:
+      containers:
+        - name: command-center
+          image: cascade-command-center:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8030
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 192Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: command-center
+  namespace: cascade-system
+  labels:
+    app: command-center
+spec:
+  selector:
+    app: command-center
+  ports:
+    - name: http
+      port: 8030
+      targetPort: http

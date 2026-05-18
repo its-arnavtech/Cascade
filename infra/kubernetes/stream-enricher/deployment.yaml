@@ -33,6 +33,15 @@ spec:
               value: stream-enricher
             - name: HIGH_MEMORY_THRESHOLD_BYTES
               value: "536870912"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
           readinessProbe:
             httpGet:
               path: /health

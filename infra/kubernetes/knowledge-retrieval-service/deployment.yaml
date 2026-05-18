@@ -35,6 +35,8 @@ spec:
               value: cascade_knowledge_base
             - name: EMBEDDING_DIMENSIONS
               value: "128"
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

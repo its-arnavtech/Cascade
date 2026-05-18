@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: redpanda
-          image: redpandadata/redpanda:latest
+          image: redpandadata/redpanda:v24.3.5
           imagePullPolicy: IfNotPresent
           ports:
             - name: kafka
@@ -31,6 +31,8 @@ spec:
             - start
             - --mode
             - dev-container
+            - --overprovisioned
+            - --default-log-level=warn
             - --smp
             - "1"
             - --memory

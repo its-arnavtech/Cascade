@@ -29,6 +29,15 @@ spec:
               value: experiments.events
             - name: ENRICHED_TOPIC
               value: telemetry.enriched
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
           readinessProbe:
             httpGet:
               path: /health

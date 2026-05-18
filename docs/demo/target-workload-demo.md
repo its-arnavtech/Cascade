@@ -1,10 +1,16 @@
 # Target Workload Demo
 
-Cascade is the reliability platform. Online Boutique is the demo application that Cascade observes, investigates, and safely targets with dry-run chaos and remediation workflows.
+Cascade is the reliability platform. Sock Shop is the canonical target workload that Cascade observes, investigates, and safely targets with dry-run chaos and remediation workflows.
 
-Online Boutique lives under `targets/online-boutique-src/` and is intentionally kept close to the upstream Google Cloud microservices demo. It includes services in multiple languages. The `adservice` is Java because upstream Online Boutique implements that service in Java; it is target workload code, not Cascade product code.
+Sock Shop manifests live under `targets/sock-shop/` and deploy into the shared target namespace `cascade-targets`.
 
-Generated target build artifacts such as Gradle `.gradle/` and `build/` directories are ignored. Do not change target service behavior unless a local build or deployment compatibility issue requires it.
+## Deploy Sock Shop
+
+```powershell
+.\scripts\deploy-targets.ps1
+```
+
+The script applies `targets/sock-shop` and waits for the target deployments to roll out.
 
 ## Verify Target Resources
 
@@ -14,12 +20,12 @@ kubectl get svc -n cascade-targets
 kubectl get deploy -n cascade-targets
 ```
 
-Expected target services include `frontend`, `recommendationservice`, `adservice`, `cartservice`, `checkoutservice`, `currencyservice`, `emailservice`, `paymentservice`, `productcatalogservice`, `shippingservice`, and `redis-cart`.
+Expected target services include `front-end`, `catalogue`, `catalogue-db`, `carts`, `carts-db`, `orders`, `orders-db`, `payment`, `shipping`, `queue-master`, `rabbitmq`, `user`, and `user-db`.
 
-## Open Online Boutique Locally
+## Open Sock Shop Locally
 
 ```powershell
-kubectl port-forward -n cascade-targets svc/frontend 18099:80
+kubectl port-forward -n cascade-targets svc/front-end 18099:80
 ```
 
 Open `http://localhost:18099`.
@@ -31,7 +37,7 @@ With the port-forward running:
 ```powershell
 1..60 | ForEach-Object {
   Invoke-WebRequest -UseBasicParsing http://localhost:18099/ | Out-Null
-  Invoke-WebRequest -UseBasicParsing http://localhost:18099/product/OLJCESPC7Z | Out-Null
+  Invoke-WebRequest -UseBasicParsing http://localhost:18099/category.html | Out-Null
   Start-Sleep -Milliseconds 500
 }
 ```
@@ -64,7 +70,7 @@ Telemetry pipeline proves telemetry flow, Anomaly detection proves anomaly detec
 
 ## Safe Chaos Dry-Run
 
-The normal demo target for chaos is `recommendationservice` in namespace `cascade-targets`. Keep demos in dry-run mode:
+The normal demo target for chaos is `catalogue` in namespace `cascade-targets`. Keep demos in dry-run mode:
 
 ```powershell
 .\scripts\accept-chaos.ps1 -DryRunOnly
@@ -82,15 +88,15 @@ Open `http://localhost:18300`.
 
 Recommended demo flow:
 
-1. Use Online Boutique traffic to create fresh target activity.
+1. Use Sock Shop traffic to create fresh target activity.
 2. Open Command Center Overview and confirm counts update.
 3. Inspect `/telemetry` for target service events.
 4. Inspect `/anomalies` and start a deterministic investigation if signals exist.
-5. Search `/knowledge` for a runbook, for example `recommendationservice latency runbook`.
-6. Use `/chaos` to create a dry-run plan against `recommendationservice`.
+5. Search `/knowledge` for a runbook, for example `catalogue latency runbook`.
+6. Use `/chaos` to create a dry-run plan against `catalogue`.
 7. Use `/remediation` to create a safe plan, record approval, and run dry-run validation.
 8. Use `/system` to confirm backend health.
 
-## Editing Target Workload Code
+## Legacy Online Boutique Source
 
-If VS Code reports Java issues in `targets/online-boutique-src/src/adservice`, first check whether they come from generated Gradle folders or missing Java/Gradle extension state. Use `.vscode/settings.example.json` as a safe example for excluding generated files from watcher/search noise while keeping source diagnostics enabled.
+`targets/online-boutique-src/` is retained as an inactive upstream source snapshot for historical reference. Do not deploy it for current Cascade demos unless you are deliberately testing legacy compatibility.
