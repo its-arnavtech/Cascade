@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import subprocess
+import shutil
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_target_powershell_scripts_parse() -> None:
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is not installed in this test environment")
+
     scripts = [
         ROOT / "scripts" / "validate-target.ps1",
         ROOT / "scripts" / "configure-target.ps1",
@@ -22,7 +29,7 @@ def test_target_powershell_scripts_parse() -> None:
             "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }"
         )
         result = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            [powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
             cwd=ROOT,
             text=True,
             capture_output=True,
