@@ -12,7 +12,6 @@ Use these scripts from the repository root unless a script says otherwise.
 | `debug-all.ps1` | Full diagnostic sweep |
 | `ci-local.ps1` | Run CI checks locally |
 | `audit-secrets.ps1` | Scan tracked files for leaked secrets |
-| `deploy-hardening.ps1` | Apply production hardening config (optional) |
 
 ## Quick Start
 
