@@ -1,6 +1,6 @@
 # Redpanda Kafka-Compatible Backbone
 
-Cascade legacy Redpanda recovery uses Redpanda as the local kind broker for the Kafka-compatible event backbone. The application code still uses `aiokafka`, the same topic names, and the same `KAFKA_BOOTSTRAP_SERVERS` environment variable.
+Cascade uses Redpanda as the local kind broker for the Kafka-compatible event backbone. The application code still uses `aiokafka`, the same topic names, and the same `KAFKA_BOOTSTRAP_SERVERS` environment variable.
 
 Redpanda is Kafka API-compatible, so `observation-service` publishes `telemetry.raw` and `stream-enricher` consumes and republishes `telemetry.enriched` without code changes.
 
