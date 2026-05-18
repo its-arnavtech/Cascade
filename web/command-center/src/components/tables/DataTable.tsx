@@ -2,28 +2,62 @@ export interface Column<T extends object> {
   key: string;
   label: string;
   render?: (row: T) => React.ReactNode;
+  width?: string;
+  align?: "left" | "right" | "center";
 }
 
-export function DataTable<T extends object>({ rows, columns, empty = "No records found" }: { rows: T[]; columns: Column<T>[]; empty?: string }) {
-  if (!rows.length) return <div className="state">{empty}</div>;
+export function DataTable<T extends object>({
+  rows,
+  columns,
+  empty = "No records found",
+  caption = "Data table",
+  getRowClassName,
+  onRowClick,
+}: {
+  rows: T[];
+  columns: Column<T>[];
+  empty?: string;
+  caption?: string;
+  getRowClassName?: (row: T) => string;
+  onRowClick?: (row: T) => void;
+}) {
   return (
     <div className="table-wrap">
       <table>
+        <caption className="sr-only">{caption}</caption>
+        <colgroup>
+          {columns.map((column) => (
+            <col key={column.key} style={column.width ? { width: column.width } : undefined} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column.key}>{column.label}</th>
+              <th key={column.key} className={column.align ? `align-${column.align}` : undefined}>{column.label}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) => (
-            <tr key={rowKey(row, index)}>
-              {columns.map((column) => (
-                <td key={column.key}>{column.render ? column.render(row) : formatCell((row as Record<string, unknown>)[column.key])}</td>
-              ))}
+          {rows.length ? rows.map((row, index) => (
+            <tr key={rowKey(row, index)} className={getRowClassName?.(row)} onClick={onRowClick ? () => onRowClick(row) : undefined}>
+              {columns.map((column) => {
+                const value = (row as Record<string, unknown>)[column.key];
+                const title = typeof value === "string" || typeof value === "number" ? String(value) : undefined;
+                return (
+                  <td key={column.key} title={title} className={column.align ? `align-${column.align}` : undefined}>
+                    {column.render ? column.render(row) : formatCell(value)}
+                  </td>
+                );
+              })}
             </tr>
-          ))}
+          )) : (
+            <tr>
+              <td className="empty-cell" colSpan={columns.length}>
+                <span className="empty-icon" aria-hidden="true">--</span>
+                {empty}
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>

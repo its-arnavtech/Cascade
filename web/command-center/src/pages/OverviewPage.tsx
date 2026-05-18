@@ -145,7 +145,7 @@ function MetricCard({ tone, icon, label, value, delta }: { tone: "blue" | "amber
           <div>
             <div className="metric-label">{label}</div>
             <div className="metric-value">{value}</div>
-            <div className="metric-delta">↗ {delta}</div>
+            <div className="metric-delta">Trend: {delta}</div>
           </div>
         </div>
       </div>
