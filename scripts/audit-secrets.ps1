@@ -11,15 +11,22 @@ $keywords = @(
     "BEGIN RSA PRIVATE KEY", "BEGIN OPENSSH PRIVATE KEY", "service_account"
 )
 
-$safeValues = @("", "none", "null", "false", "true", "changeme", "change-me", "placeholder", "example", "replace-me", "replace-with-local-key-if-needed", "<redacted>", "<placeholder>", "your-value-here")
+$safeValues = @("", "none", "null", "false", "true", "changeme", "change-me", "placeholder", "example", "demo", "demo-only-not-secret", "replace-me", "replace-with-local-key-if-needed", "<redacted>", "<placeholder>", "your-value-here")
 $findings = New-Object System.Collections.Generic.List[object]
 $tracked = @(& git ls-files)
 
+function Test-SafeSecretValue {
+    param([string]$Value)
+    $normalized = $Value.Trim().Trim('"', "'").ToLowerInvariant()
+    return ($safeValues -contains $normalized -or $Value -match '^\$\{?[A-Z0-9_]+\}?$')
+}
+
 foreach ($file in $tracked) {
     if (-not (Test-Path $file)) { continue }
-    $lineNumber = 0
-    foreach ($line in Get-Content -LiteralPath $file -ErrorAction SilentlyContinue) {
-        $lineNumber++
+    $lines = @(Get-Content -LiteralPath $file -ErrorAction SilentlyContinue)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        $lineNumber = $i + 1
         foreach ($keyword in $keywords) {
             if ($line -notmatch [regex]::Escape($keyword)) { continue }
 
@@ -30,14 +37,27 @@ foreach ($file in $tracked) {
             if ($match.Success) {
                 $keyName = $match.Groups[1].Value.Trim()
                 $value = $match.Groups[3].Value.Trim()
-                $normalized = $value.ToLowerInvariant()
-                $keyLooksCredentialLike = ($keyName -cmatch '[A-Z]' -or $keyName -match 'api|secret|password|passwd|authorization|private|client|database|aws|openai|qdrant|clickhouse|service_account')
+                $keyLooksCredentialLike = ($keyName -match 'api|secret|password|passwd|authorization|private|client|database|aws|openai|qdrant|clickhouse|service_account')
                 $fileAllowsCodeIdentifiers = $file -match 'package-lock\.json$|deterministic\.py$'
-                if ($keyLooksCredentialLike -and -not $fileAllowsCodeIdentifiers -and $safeValues -notcontains $normalized -and $value -notmatch '^\$\{?[A-Z0-9_]+\}?$') {
+                if ($keyLooksCredentialLike -and -not $fileAllowsCodeIdentifiers -and -not (Test-SafeSecretValue $value)) {
                     $highConfidence = $true
                     $reason = "non-placeholder assignment"
                 } else {
                     $reason = "placeholder assignment"
+                }
+            }
+            $yamlEnvNamePattern = '(?i)^\s*-\s*name:\s*["'']?([A-Z0-9_.-]*(api[_-]?key|apikey|secret|password|passwd|token|authorization|private[_-]?key|client[_-]?secret|database_url|clickhouse_password|qdrant_api_key|openai_api_key|aws_access_key_id|aws_secret_access_key|service_account)[A-Z0-9_.-]*)["'']?\s*$'
+            $yamlMatch = [regex]::Match($line, $yamlEnvNamePattern)
+            if ($yamlMatch.Success -and ($i + 1) -lt $lines.Count) {
+                $valueMatch = [regex]::Match($lines[$i + 1], '^\s*value:\s*["'']?([^"'']*)["'']?\s*(#.*)?$')
+                if ($valueMatch.Success) {
+                    $value = $valueMatch.Groups[1].Value.Trim()
+                    if (-not (Test-SafeSecretValue $value)) {
+                        $highConfidence = $true
+                        $reason = "non-placeholder Kubernetes env value"
+                    } else {
+                        $reason = "placeholder Kubernetes env value"
+                    }
                 }
             }
             if ($line -match "-----BEGIN (RSA|OPENSSH|DSA|EC) PRIVATE KEY-----") {

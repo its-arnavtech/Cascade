@@ -94,41 +94,28 @@ try {
     Invoke-CiStep "Kubernetes YAML parse validation" {
         python -m pip install pyyaml
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        @'
-from pathlib import Path
-import sys
-import yaml
+        python scripts/validate-k8s-manifests.py
+    }
 
-paths = sorted(Path("infra/kubernetes").glob("**/*.yaml"))
-if not paths:
-    print("No Kubernetes YAML files found", file=sys.stderr)
-    sys.exit(1)
-
-failures = []
-for path in paths:
-    try:
-        docs = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
-    except Exception as exc:
-        failures.append(f"{path}: YAML parse failed: {exc}")
-        continue
-    for index, doc in enumerate(docs, start=1):
-        if doc is None:
-            continue
-        if not isinstance(doc, dict):
-            failures.append(f"{path} document {index}: expected mapping")
-            continue
-        for field in ("apiVersion", "kind", "metadata"):
-            if field not in doc:
-                failures.append(f"{path} document {index}: missing {field}")
-        metadata = doc.get("metadata")
-        if isinstance(metadata, dict) and not metadata.get("name"):
-            failures.append(f"{path} document {index}: missing metadata.name")
-
-if failures:
-    print("\n".join(failures), file=sys.stderr)
-    sys.exit(1)
-print(f"Validated {len(paths)} Kubernetes YAML files")
-'@ | python -
+    Invoke-CiStep "Kustomize and kubectl client validation" {
+        kubectl kustomize infra/kubernetes >$null
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        kubectl kustomize infra/kubernetes/base >$null
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        kubectl kustomize infra/kubernetes/overlays/low-resource >$null
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        kubectl kustomize targets/sock-shop >$null
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        kubectl cluster-info >$null 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            kubectl apply --dry-run=client -f infra/kubernetes/network-policies
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            kubectl apply --dry-run=client -k targets/sock-shop
+        } else {
+            Write-Host "Skipping kubectl apply dry-runs: no Kubernetes API context is available."
+            Write-Host "Offline YAML validation and kubectl kustomize render checks were completed."
+            $global:LASTEXITCODE = 0
+        }
     }
 
     if (-not $SkipDocker -and -not $SkipDockerBuild) {

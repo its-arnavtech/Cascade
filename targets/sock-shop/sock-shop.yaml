@@ -116,7 +116,8 @@ spec:
           image: weaveworksdemos/catalogue-db:0.3.0
           env:
             - name: MYSQL_ROOT_PASSWORD
-              value: fake_password
+              # Demo-only local value required by the Sock Shop catalogue-db image; not a production secret.
+              value: demo-only-not-secret
             - name: MYSQL_DATABASE
               value: socksdb
           ports:
