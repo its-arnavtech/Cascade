@@ -24,20 +24,20 @@ class Phase6CoreTests(unittest.TestCase):
         self.assertEqual(payload["tool_name"], "get_recent_anomalies")
 
     def test_deterministic_planner_node_order(self) -> None:
-        request = InvestigationRequest(trigger_type="anomaly", service="recommendationservice", objective="Investigate restart")
+        request = InvestigationRequest(trigger_type="anomaly", service="catalogue", objective="Investigate restart")
         plan = build_plan(request)
         self.assertEqual(plan[0], "supervisor")
         self.assertIn("anomaly_analyst", plan)
         self.assertEqual(plan[-1], "verifier_critic")
 
     def test_agent_state_serialization(self) -> None:
-        state = AgentState(investigation_id="inv_test", trigger=InvestigationRequest(trigger_type="manual", service="cartservice"))
+        state = AgentState(investigation_id="inv_test", trigger=InvestigationRequest(trigger_type="manual", service="carts"))
         state.knowledge_evidence.append({"chunk_id": "c1", "title": "Runbook"})
         dumped = state.model_dump()
         self.assertEqual(dumped["knowledge_evidence"][0]["chunk_id"], "c1")
 
     def test_report_includes_evidence_refs_and_text_only_remediation(self) -> None:
-        request = InvestigationRequest(trigger_type="service", service="checkoutservice", objective="Investigate latency")
+        request = InvestigationRequest(trigger_type="service", service="orders", objective="Investigate latency")
         state = AgentState(
             investigation_id="inv_report",
             trigger=request,
@@ -58,15 +58,15 @@ class Phase6CoreTests(unittest.TestCase):
         self.assertTrue(report["limitations"])
 
     def test_remediation_suggestions_are_text_only(self) -> None:
-        suggestion = text_only_remediation(["kubectl rollout restart deployment checkoutservice"])
+        suggestion = text_only_remediation(["kubectl rollout restart deployment orders"])
         self.assertIn("SUGGESTION ONLY", suggestion[0])
         self.assertIn("kubectl rollout restart", suggestion[0])
 
     def test_ids_and_lifecycle_event_are_stable_shape(self) -> None:
-        first = stable_id("inv", "service:checkoutservice")
-        second = stable_id("inv", "service:checkoutservice")
+        first = stable_id("inv", "service:orders")
+        second = stable_id("inv", "service:orders")
         self.assertEqual(first, second)
-        state = AgentState(investigation_id=first, trigger=InvestigationRequest(trigger_type="service", service="checkoutservice"))
+        state = AgentState(investigation_id=first, trigger=InvestigationRequest(trigger_type="service", service="orders"))
         event = build_lifecycle_event("investigation.completed", state, "completed")
         self.assertEqual(event["schema_version"], "phase6.v1")
         self.assertEqual(event["event_type"], "investigation.completed")

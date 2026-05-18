@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { AlertTriangle, Beaker, Bell, BookOpen, ChevronDown, FileSearch, Gauge, Home, Info, Plus, RadioTower, RefreshCw, Shield, Stethoscope, Wrench } from "lucide-react";
+import { AlertTriangle, Beaker, Bell, BookOpen, ChevronDown, FileSearch, Gauge, GitBranch, Home, Info, Network, Plus, RadioTower, RefreshCw, Shield, Stethoscope, Wrench } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { dangerousActionsEnabled } from "../../api/client";
 import { useSystemHealth } from "../../api/hooks";
@@ -9,6 +9,8 @@ const nav = [
   { to: "/telemetry", label: "Telemetry", icon: RadioTower },
   { to: "/anomalies", label: "Anomalies", icon: AlertTriangle },
   { to: "/investigations", label: "Investigations", icon: Stethoscope },
+  { to: "/topology", label: "Topology", icon: Network },
+  { to: "/causality", label: "Causality", icon: GitBranch },
   { to: "/knowledge", label: "Knowledge", icon: BookOpen },
   { to: "/chaos", label: "Chaos", icon: Beaker },
   { to: "/remediation", label: "Remediation", icon: Wrench },

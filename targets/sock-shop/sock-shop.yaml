@@ -1,0 +1,686 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front-end
+  labels: &front-end-labels
+    app: front-end
+    app.kubernetes.io/name: front-end
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: front-end
+  template:
+    metadata:
+      labels: *front-end-labels
+    spec:
+      containers:
+        - name: front-end
+          image: weaveworksdemos/front-end:0.3.12
+          ports:
+            - containerPort: 8079
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: front-end
+  labels:
+    app: front-end
+    app.kubernetes.io/name: front-end
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  type: ClusterIP
+  selector:
+    app: front-end
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8079
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue
+  labels: &catalogue-labels
+    app: catalogue
+    app.kubernetes.io/name: catalogue
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogue
+  template:
+    metadata:
+      labels: *catalogue-labels
+    spec:
+      containers:
+        - name: catalogue
+          image: weaveworksdemos/catalogue:0.3.5
+          ports:
+            - containerPort: 80
+          env:
+            - name: DB_HOST
+              value: catalogue-db
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogue
+  labels:
+    app: catalogue
+    app.kubernetes.io/name: catalogue
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: catalogue
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogue-db
+  labels: &catalogue-db-labels
+    app: catalogue-db
+    app.kubernetes.io/name: catalogue-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: catalogue-db
+  template:
+    metadata:
+      labels: *catalogue-db-labels
+    spec:
+      containers:
+        - name: catalogue-db
+          image: weaveworksdemos/catalogue-db:0.3.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              # Demo-only local value required by the Sock Shop catalogue-db image; not a production secret.
+              value: demo-only-not-secret
+            - name: MYSQL_DATABASE
+              value: socksdb
+          ports:
+            - name: mysql
+              containerPort: 3306
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogue-db
+  labels:
+    app: catalogue-db
+    app.kubernetes.io/name: catalogue-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: catalogue-db
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: 3306
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carts
+  labels: &carts-labels
+    app: carts
+    app.kubernetes.io/name: carts
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carts
+  template:
+    metadata:
+      labels: *carts-labels
+    spec:
+      containers:
+        - name: carts
+          image: weaveworksdemos/carts:0.4.8
+          ports:
+            - containerPort: 80
+          env:
+            - name: MONGO_HOST
+              value: carts-db
+            - name: JAVA_OPTS
+              value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carts
+  labels:
+    app: carts
+    app.kubernetes.io/name: carts
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: carts
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: carts-db
+  labels: &carts-db-labels
+    app: carts-db
+    app.kubernetes.io/name: carts-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: carts-db
+  template:
+    metadata:
+      labels: *carts-db-labels
+    spec:
+      containers:
+        - name: carts-db
+          image: mongo:3.4
+          ports:
+            - containerPort: 27017
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: carts-db
+  labels:
+    app: carts-db
+    app.kubernetes.io/name: carts-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: carts-db
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  labels: &orders-labels
+    app: orders
+    app.kubernetes.io/name: orders
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels: *orders-labels
+    spec:
+      containers:
+        - name: orders
+          image: weaveworksdemos/orders:0.4.7
+          ports:
+            - containerPort: 80
+          env:
+            - name: MONGO_HOST
+              value: orders-db
+            - name: JAVA_OPTS
+              value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders
+  labels:
+    app: orders
+    app.kubernetes.io/name: orders
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: orders
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-db
+  labels: &orders-db-labels
+    app: orders-db
+    app.kubernetes.io/name: orders-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-db
+  template:
+    metadata:
+      labels: *orders-db-labels
+    spec:
+      containers:
+        - name: orders-db
+          image: mongo:3.4
+          ports:
+            - containerPort: 27017
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orders-db
+  labels:
+    app: orders-db
+    app.kubernetes.io/name: orders-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: orders-db
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  labels: &payment-labels
+    app: payment
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment
+  template:
+    metadata:
+      labels: *payment-labels
+    spec:
+      containers:
+        - name: payment
+          image: weaveworksdemos/payment:0.4.3
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment
+  labels:
+    app: payment
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: payment
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shipping
+  labels: &shipping-labels
+    app: shipping
+    app.kubernetes.io/name: shipping
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shipping
+  template:
+    metadata:
+      labels: *shipping-labels
+    spec:
+      containers:
+        - name: shipping
+          image: weaveworksdemos/shipping:0.4.8
+          ports:
+            - containerPort: 80
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: JAVA_OPTS
+              value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shipping
+  labels:
+    app: shipping
+    app.kubernetes.io/name: shipping
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: shipping
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queue-master
+  labels: &queue-master-labels
+    app: queue-master
+    app.kubernetes.io/name: queue-master
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: queue-master
+  template:
+    metadata:
+      labels: *queue-master-labels
+    spec:
+      containers:
+        - name: queue-master
+          image: weaveworksdemos/queue-master:0.3.1
+          ports:
+            - containerPort: 80
+          env:
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: JAVA_OPTS
+              value: -Xms64m -Xmx128m -XX:+UseG1GC -Djava.security.egd=file:/dev/urandom -Dspring.zipkin.enabled=false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: queue-master
+  labels:
+    app: queue-master
+    app.kubernetes.io/name: queue-master
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: queue-master
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  labels: &rabbitmq-labels
+    app: rabbitmq
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rabbitmq
+  template:
+    metadata:
+      labels: *rabbitmq-labels
+    spec:
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.6.8-management
+          ports:
+            - containerPort: 5672
+            - containerPort: 15672
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: rabbitmq
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: 5672
+    - name: management
+      port: 15672
+      targetPort: 15672
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user
+  labels: &user-labels
+    app: user
+    app.kubernetes.io/name: user
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user
+  template:
+    metadata:
+      labels: *user-labels
+    spec:
+      containers:
+        - name: user
+          image: weaveworksdemos/user:0.4.7
+          ports:
+            - containerPort: 80
+          env:
+            - name: MONGO_HOST
+              value: user-db
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user
+  labels:
+    app: user
+    app.kubernetes.io/name: user
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: user
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-db
+  labels: &user-db-labels
+    app: user-db
+    app.kubernetes.io/name: user-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-db
+  template:
+    metadata:
+      labels: *user-db-labels
+    spec:
+      containers:
+        - name: user-db
+          image: weaveworksdemos/user-db:0.4.0
+          ports:
+            - containerPort: 27017
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-db
+  labels:
+    app: user-db
+    app.kubernetes.io/name: user-db
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  selector:
+    app: user-db
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-test
+  labels:
+    app: load-test
+    app.kubernetes.io/name: load-test
+    app.kubernetes.io/part-of: sock-shop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-test
+  template:
+    metadata:
+      labels:
+        app: load-test
+        app.kubernetes.io/name: load-test
+        app.kubernetes.io/part-of: sock-shop
+    spec:
+      initContainers:
+        - name: wait-for-front-end
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              until wget -q -T 2 -O /dev/null http://front-end/; do
+                echo "waiting for front-end"
+                sleep 2
+              done
+      containers:
+        - name: load-test
+          image: curlimages/curl:8.11.1
+          command:
+            - sh
+            - -c
+            - |
+              while true; do
+                curl -fsS http://front-end/ >/dev/null || true
+                curl -fsS http://front-end/catalogue >/dev/null || true
+                sleep 2
+              done
+          env:
+            - name: HOST
+              value: http://front-end.cascade-targets.svc.cluster.local
+            - name: USERS
+              value: "10"
+            - name: RATE
+              value: "2"

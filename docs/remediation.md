@@ -28,7 +28,7 @@ Safety is deny-by-default:
 
 - allowed namespace defaults to `cascade-targets`.
 - denied namespaces include `kube-system`, `kube-public`, `kube-node-lease`, `local-path-storage`, `monitoring`, `cascade-system`, and `default`.
-- services must be allowlisted Online Boutique/Cascade target services.
+- services must be allowlisted Sock Shop/Cascade target services.
 - evidence refs are required for recommendations.
 - rollback steps are required for executable actions.
 - broad selectors are rejected.

@@ -47,6 +47,15 @@ def test_real_remediation_execution_blocked_by_default() -> None:
         ("/api/chaos/planner/plans", {"dry_run": True}),
         ("/api/chaos/executor/runs", {"dry_run": True, "approved": False}),
         ("/api/agent/investigations", {}),
+        ("/api/topology/topology/impact", {"root_service": "catalogue"}),
+        ("/api/topology/topology/blast-radius", {"root_service": "catalogue"}),
+        ("/api/topology/topology/critical-paths", {"root_service": "catalogue"}),
+        ("/api/causality/causality/analyze", {"target_service": "catalogue"}),
+        ("/api/causal-reconstruction/reconstruct", {"experiment_id": "exp-1"}),
+        ("/api/timeline/timeline", {}),
+        ("/api/timeline/report", {}),
+        ("/api/chaos/planner/plans/plan-1/validate", {}),
+        ("/api/remediation/recommender/plans/plan-1/validate", {}),
     ],
 )
 def test_safe_create_routes_not_blocked_by_safety_gate(monkeypatch: pytest.MonkeyPatch, url: str, body: dict[str, object]) -> None:
@@ -65,6 +74,20 @@ def test_safe_create_routes_not_blocked_by_safety_gate(monkeypatch: pytest.Monke
 
 def test_real_chaos_run_blocked_by_default() -> None:
     response = client.post("/api/chaos/executor/runs", json={"dry_run": False, "approved": True})
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/api/chaos/executor/runs/chaos_run_1/cleanup",
+        "/api/chaos/executor/runs/chaos_run_1/observe",
+        "/api/remediation/recommender/plans/from-latest-anomaly",
+        "/api/remediation/executor/executions/rem_exec_1/retry",
+    ],
+)
+def test_dangerous_or_unreviewed_post_routes_blocked_by_default(url: str) -> None:
+    response = client.post(url, json={})
     assert response.status_code == 403
 
 

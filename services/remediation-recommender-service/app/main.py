@@ -16,6 +16,7 @@ from services.shared.remediation.planner import build_plan
 from services.shared.remediation.safety import default_policy, validate_plan
 from services.shared.remediation.schemas import RemediationPlanRequest
 from services.shared.storage.clickhouse_client import ClickHouseClient
+from services.shared.targets.catalog import ACTIVE_NAMESPACE, ACTIVE_SAFE_CHAOS_SERVICES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ async def plan_from_latest_investigation(payload: dict[str, Any] | None = None) 
     service = payload.get("service")
     rows = await clickhouse.recent_investigation_runs(1, service=service)
     trigger_id = rows[0]["investigation_id"] if rows else ""
-    request = RemediationPlanRequest(trigger_type="investigation", trigger_id=trigger_id, service=service or (rows[0].get("service") if rows else "recommendationservice"), namespace=payload.get("namespace", "cascade-targets"), objective=payload.get("objective", "Recommend remediation from latest investigation"), preferred_action_type=payload.get("preferred_action_type", "investigate_only"))
+    request = RemediationPlanRequest(trigger_type="investigation", trigger_id=trigger_id, service=service or (rows[0].get("service") if rows else ACTIVE_SAFE_CHAOS_SERVICES[0]), namespace=payload.get("namespace", ACTIVE_NAMESPACE), objective=payload.get("objective", "Recommend remediation from latest investigation"), preferred_action_type=payload.get("preferred_action_type", "investigate_only"))
     return await create_plan(request)
 
 
@@ -119,7 +120,7 @@ async def plan_from_latest_anomaly(payload: dict[str, Any] | None = None) -> dic
     service = payload.get("service")
     rows = await clickhouse.recent_anomalies(1, service=service)
     trigger_id = rows[0]["anomaly_id"] if rows else ""
-    request = RemediationPlanRequest(trigger_type="anomaly", trigger_id=trigger_id, service=service or (rows[0].get("service") if rows else "recommendationservice"), namespace=payload.get("namespace", "cascade-targets"), objective=payload.get("objective", "Recommend remediation from latest anomaly"), preferred_action_type=payload.get("preferred_action_type", "investigate_only"))
+    request = RemediationPlanRequest(trigger_type="anomaly", trigger_id=trigger_id, service=service or (rows[0].get("service") if rows else ACTIVE_SAFE_CHAOS_SERVICES[0]), namespace=payload.get("namespace", ACTIVE_NAMESPACE), objective=payload.get("objective", "Recommend remediation from latest anomaly"), preferred_action_type=payload.get("preferred_action_type", "investigate_only"))
     return await create_plan(request)
 
 

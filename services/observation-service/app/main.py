@@ -3,9 +3,11 @@ import logging
 import re
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 
 from app.config import Settings, get_settings
@@ -75,7 +77,19 @@ async def collect_snapshot(settings: Settings, prometheus: PrometheusClient) -> 
         else:
             normalized_results[metric_name] = result
 
-    return normalize_snapshot(settings.target_namespace, normalized_results)
+    snapshot_response = normalize_snapshot(settings.target_namespace, normalized_results)
+    if snapshot_response.pods:
+        return snapshot_response
+
+    fallback = await _collect_kubernetes_snapshot(settings)
+    if fallback.pods:
+        logger.warning(
+            "Prometheus snapshot returned no pods; using Kubernetes API fallback namespace=%s count=%s",
+            settings.target_namespace,
+            len(fallback.pods),
+        )
+        return fallback
+    return snapshot_response
 
 
 @app.get("/metrics/raw", response_model=RawMetricsResponse)
@@ -108,6 +122,63 @@ def _validate_promql(query: str) -> str:
         )
 
     return normalized_query
+
+
+async def _collect_kubernetes_snapshot(settings: Settings) -> SnapshotResponse:
+    token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    ca_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+    if not token_path.exists():
+        return SnapshotResponse(namespace=settings.target_namespace, timestamp=datetime.now(UTC), pods=[])
+
+    try:
+        token = token_path.read_text(encoding="utf-8").strip()
+        url = f"https://kubernetes.default.svc/api/v1/namespaces/{settings.target_namespace}/pods"
+        verify: str | bool = str(ca_path) if ca_path.exists() else True
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds, verify=verify) as client:
+            response = await client.get(url, headers={"Authorization": f"Bearer {token}"})
+            response.raise_for_status()
+            payload = response.json()
+    except Exception as exc:
+        logger.warning("Kubernetes snapshot fallback unavailable: %s", exc)
+        return SnapshotResponse(namespace=settings.target_namespace, timestamp=datetime.now(UTC), pods=[])
+
+    pods: list[TelemetryPodSnapshot] = []
+    for item in payload.get("items", []):
+        metadata = item.get("metadata", {})
+        status = item.get("status", {})
+        name = metadata.get("name")
+        namespace = metadata.get("namespace") or settings.target_namespace
+        if not name:
+            continue
+        container_statuses = status.get("containerStatuses") or []
+        restart_count = sum(int(container.get("restartCount") or 0) for container in container_statuses)
+        pods.append(
+            TelemetryPodSnapshot(
+                namespace=namespace,
+                pod_name=name,
+                service_name=_service_name_from_pod(metadata),
+                pod_phase=status.get("phase"),
+                restart_count=float(restart_count),
+            )
+        )
+
+    return SnapshotResponse(namespace=settings.target_namespace, timestamp=datetime.now(UTC), pods=pods)
+
+
+def _service_name_from_pod(metadata: dict[str, Any]) -> str | None:
+    labels = metadata.get("labels") or {}
+    for key in ("app", "app.kubernetes.io/name", "name"):
+        value = labels.get(key)
+        if value:
+            return str(value)
+    name = str(metadata.get("name") or "")
+    deployment_match = re.match(r"^(?P<name>.+)-[a-f0-9]{8,10}-[a-z0-9]{5}$", name)
+    if deployment_match:
+        return deployment_match.group("name")
+    stateful_match = re.match(r"^(?P<name>.+)-\d+$", name)
+    if stateful_match:
+        return stateful_match.group("name")
+    return name or None
 
 
 async def _publish_telemetry_loop(settings: Settings) -> None:

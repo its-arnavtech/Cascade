@@ -121,6 +121,61 @@ class ClickHouseClient:
         rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.anomaly_events WHERE anomaly_id = {safe} ORDER BY detected_at DESC LIMIT 1")
         return rows[0] if rows else None
 
+    async def insert_causal_report(self, report: dict[str, Any]) -> int:
+        report_row = {
+            "report_id": str(report.get("report_id") or ""),
+            "generated_at": str(report.get("generated_at") or ""),
+            "target_service": str(report.get("target_service") or ""),
+            "target_feature": str(report.get("target_feature") or ""),
+            "source_feature": str(report.get("source_feature") or ""),
+            "status": str(report.get("status") or ""),
+            "summary": str(report.get("summary") or ""),
+            "window_start": report.get("window_start"),
+            "window_end": report.get("window_end"),
+            "candidate_count": len(report.get("candidates") or []),
+            "methodology_json": self.json_dumps(report.get("methodology") or {}),
+            "limitations_json": self.json_dumps(report.get("limitations") or []),
+            "report_json": self.json_dumps(report),
+        }
+        candidate_rows = []
+        for candidate in report.get("candidates") or []:
+            candidate_rows.append({
+                "report_id": report_row["report_id"],
+                "candidate_id": f"{report_row['report_id']}:{candidate.get('source_service', '')}:{candidate.get('lag_windows', 0)}",
+                "generated_at": report_row["generated_at"],
+                "rank": int(candidate.get("rank") or 0),
+                "source_service": str(candidate.get("source_service") or ""),
+                "target_service": str(candidate.get("target_service") or ""),
+                "source_feature": str(candidate.get("source_feature") or ""),
+                "target_feature": str(candidate.get("target_feature") or ""),
+                "status": str(candidate.get("status") or ""),
+                "rank_score": float(candidate.get("rank_score") or 0.0),
+                "best_p_value": candidate.get("best_p_value"),
+                "effect_size": float(candidate.get("effect_size") or 0.0),
+                "lag_windows": int(candidate.get("lag_windows") or 0),
+                "sample_count": int(candidate.get("sample_count") or 0),
+                "pearson_json": self.json_dumps(candidate.get("pearson") or {}),
+                "spearman_json": self.json_dumps(candidate.get("spearman") or {}),
+                "granger_json": self.json_dumps(candidate.get("granger") or {}),
+                "topology_distance": candidate.get("topology_distance"),
+                "anomaly_context_json": self.json_dumps(candidate.get("anomaly_context") or {}),
+                "limitations_json": self.json_dumps(candidate.get("limitations") or []),
+                "candidate_json": self.json_dumps(candidate),
+            })
+        inserted = await self.insert_rows("causal_reports", [report_row])
+        inserted += await self.insert_rows("causal_candidates", candidate_rows)
+        return inserted
+
+    async def recent_causal_reports(self, limit: int = 20, target_service: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"target_service": target_service})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.causal_reports {where} ORDER BY generated_at DESC LIMIT {self._limit(limit)}")
+
+    async def causal_report_detail(self, report_id: str) -> dict[str, Any]:
+        safe = self._quote(report_id)
+        reports = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.causal_reports WHERE report_id = {safe} ORDER BY generated_at DESC LIMIT 1")
+        candidates = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.causal_candidates WHERE report_id = {safe} ORDER BY rank ASC LIMIT 200")
+        return {"report": reports[0] if reports else None, "candidates": candidates}
+
     async def count(self, table: str) -> int:
         text = await self.fetch_text(f"SELECT count() FROM {self.settings.clickhouse_database}.{table}")
         return int(text.strip() or "0")
@@ -234,6 +289,9 @@ class ClickHouseClient:
     async def insert_chaos_safety_violation(self, row: dict[str, Any]) -> int:
         return await self.insert_rows("chaos_safety_violations", [row])
 
+    async def insert_chaos_policy_audit(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_policy_audit", [row])
+
     async def recent_chaos_plans(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
         where = self._where({"target_service": service, "status": status})
         return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_plans {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
@@ -263,7 +321,7 @@ class ClickHouseClient:
 
     async def chaos_stats(self) -> dict[str, int | None]:
         stats: dict[str, int | None] = {}
-        for table in ["chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations"]:
+        for table in ["chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations", "chaos_policy_audit"]:
             try:
                 stats[table] = await self.count(table)
             except Exception:
@@ -513,6 +571,50 @@ CREATE TABLE IF NOT EXISTS {db}.anomaly_events (
     published_to_redpanda UInt8
 ) ENGINE = MergeTree
 ORDER BY (service, detected_at, anomaly_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.causal_reports (
+    report_id String,
+    generated_at DateTime64(3),
+    target_service String,
+    target_feature String,
+    source_feature String,
+    status String,
+    summary String,
+    window_start Nullable(DateTime64(3)),
+    window_end Nullable(DateTime64(3)),
+    candidate_count UInt64,
+    methodology_json String,
+    limitations_json String,
+    report_json String
+) ENGINE = ReplacingMergeTree(generated_at)
+ORDER BY (generated_at, report_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.causal_candidates (
+    report_id String,
+    candidate_id String,
+    generated_at DateTime64(3),
+    rank UInt64,
+    source_service String,
+    target_service String,
+    source_feature String,
+    target_feature String,
+    status String,
+    rank_score Float64,
+    best_p_value Nullable(Float64),
+    effect_size Float64,
+    lag_windows UInt64,
+    sample_count UInt64,
+    pearson_json String,
+    spearman_json String,
+    granger_json String,
+    topology_distance Nullable(Int64),
+    anomaly_context_json String,
+    limitations_json String,
+    candidate_json String
+) ENGINE = ReplacingMergeTree(generated_at)
+ORDER BY (report_id, rank, candidate_id)
 """,
         f"""
 CREATE TABLE IF NOT EXISTS {db}.model_runs (
@@ -786,6 +888,21 @@ CREATE TABLE IF NOT EXISTS {db}.chaos_safety_violations (
     request_json String
 ) ENGINE = MergeTree
 ORDER BY (created_at, violation_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_policy_audit (
+    audit_id String,
+    checked_at DateTime64(3),
+    plan_id String,
+    experiment_kind String,
+    namespace String,
+    service String,
+    allowed UInt8,
+    risk_level String,
+    findings_json String,
+    policy_json String
+) ENGINE = MergeTree
+ORDER BY (checked_at, audit_id)
 """,
         f"""
 CREATE TABLE IF NOT EXISTS {db}.remediation_plans (

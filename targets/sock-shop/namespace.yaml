@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cascade-targets
+  labels:
+    app.kubernetes.io/name: cascade-targets
+    app.kubernetes.io/part-of: cascade
+    cascade.io/role: target-workload

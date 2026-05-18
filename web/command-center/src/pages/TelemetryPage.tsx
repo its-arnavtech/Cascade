@@ -22,8 +22,8 @@ export function TelemetryPage() {
     <div className="page">
       <div className="page-heading"><div><h2>Telemetry / Events</h2><p>Recent enriched telemetry and feature windows from ClickHouse.</p></div></div>
       <div className="filters">
-        <div className="form-field"><label htmlFor="telemetry-service">Service</label><input id="telemetry-service" placeholder="recommendationservice" value={service} onChange={(e) => setService(e.target.value)} /></div>
-        <div className="form-field"><label htmlFor="telemetry-namespace">Namespace</label><input id="telemetry-namespace" placeholder="cascade-targets" value={namespace} onChange={(e) => setNamespace(e.target.value)} /></div>
+        <div className="form-field"><label htmlFor="telemetry-service">Service</label><input id="telemetry-service" placeholder="service from topology" value={service} onChange={(e) => setService(e.target.value)} /></div>
+        <div className="form-field"><label htmlFor="telemetry-namespace">Namespace</label><input id="telemetry-namespace" placeholder="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} /></div>
         <div className="form-field"><label htmlFor="telemetry-event-type">Event type</label><input id="telemetry-event-type" placeholder="metric" value={eventType} onChange={(e) => setEventType(e.target.value)} /></div>
         <div className="form-field"><label htmlFor="telemetry-limit">Limit</label><input id="telemetry-limit" type="number" min={1} max={100} value={limit} onChange={(e) => setLimit(Number(e.target.value))} /></div>
       </div>

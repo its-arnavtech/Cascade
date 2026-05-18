@@ -33,6 +33,8 @@ spec:
               value: redpanda.cascade-system.svc.cluster.local:9092
             - name: REMEDIATION_EVENTS_TOPIC
               value: remediation.actions
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

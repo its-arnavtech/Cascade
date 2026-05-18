@@ -154,59 +154,26 @@ jobs:
         run: python -m pip install --upgrade pip pyyaml
 
       - name: Parse Kubernetes YAML
+        run: python scripts/validate-k8s-manifests.py
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Validate Kustomize renders and client-side applies
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          import sys
-          import yaml
-
-          paths = sorted(Path("infra/kubernetes").glob("**/*.yaml"))
-          if not paths:
-              print("No Kubernetes YAML files found", file=sys.stderr)
-              sys.exit(1)
-
-          known_kinds = {
-              "ClusterRole",
-              "ClusterRoleBinding",
-              "ConfigMap",
-              "Deployment",
-              "Job",
-              "Namespace",
-              "Role",
-              "RoleBinding",
-              "Service",
-              "ServiceAccount",
-          }
-          failures = []
-          for path in paths:
-              try:
-                  docs = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
-              except Exception as exc:
-                  failures.append(f"{path}: YAML parse failed: {exc}")
-                  continue
-              for index, doc in enumerate(docs, start=1):
-                  if doc is None:
-                      continue
-                  if not isinstance(doc, dict):
-                      failures.append(f"{path} document {index}: expected mapping")
-                      continue
-                  for field in ("apiVersion", "kind", "metadata"):
-                      if field not in doc:
-                          failures.append(f"{path} document {index}: missing {field}")
-                  metadata = doc.get("metadata")
-                  if isinstance(metadata, dict) and not metadata.get("name"):
-                      failures.append(f"{path} document {index}: missing metadata.name")
-                  kind = doc.get("kind")
-                  if kind not in known_kinds and path.parts[:3] != ("infra", "kubernetes", "chaos-templates"):
-                      failures.append(f"{path} document {index}: unexpected kind {kind!r}")
-
-          if failures:
-              print("\n".join(failures), file=sys.stderr)
-              sys.exit(1)
-          print(f"Validated {len(paths)} Kubernetes YAML files offline")
-          PY
+          kubectl kustomize infra/kubernetes >/dev/null
+          kubectl kustomize infra/kubernetes/base >/dev/null
+          kubectl kustomize infra/kubernetes/overlays/low-resource >/dev/null
+          kubectl kustomize targets/sock-shop >/dev/null
+          if kubectl cluster-info >/dev/null 2>&1; then
+            kubectl apply --dry-run=client -f infra/kubernetes/network-policies
+            kubectl apply --dry-run=client -k targets/sock-shop
+          else
+            echo "Skipping kubectl apply dry-runs: no Kubernetes API context is available in CI."
+            echo "Offline YAML validation and kubectl kustomize render checks were completed."
+          fi
 
   docker-build-smoke:
     name: Docker build smoke

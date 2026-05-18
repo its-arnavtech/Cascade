@@ -14,6 +14,7 @@ from services.shared.chaos.safety import default_policy, validate_plan
 from services.shared.chaos.schemas import ChaosPlanRequest
 from services.shared.chaos.templates import build_manifest
 from services.shared.storage.clickhouse_client import ClickHouseClient
+from services.shared.targets.catalog import ACTIVE_NAMESPACE, ACTIVE_SAFE_CHAOS_SERVICES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ async def create_plan(payload: ChaosPlanRequest) -> dict[str, Any]:
     safety = validate_plan(plan, default_policy(), dry_run=payload.dry_run)
     plan.update({"status": "ready" if safety.allowed else "rejected", "safety_score": safety.safety_score, "risk_level": safety.risk_level, "safety_findings": safety.findings + safety.violations})
     await _insert_plan(plan)
+    await _audit(plan, safety)
     if not safety.allowed:
         await _insert_violation(plan["plan_id"], "", "plan_rejected", "high", "; ".join(safety.violations), payload.model_dump())
         raise HTTPException(status_code=400, detail={"status": "rejected", "plan_id": plan["plan_id"], "violations": safety.violations})
@@ -98,8 +100,8 @@ async def plan_from_anomaly(payload: dict[str, Any] | None = None) -> dict[str, 
                     service = rows[0].get("service") if rows else None
     request = ChaosPlanRequest(
         objective=f"Validate {service or 'service'} resilience based on anomaly evidence",
-        target_service=service or "recommendationservice",
-        target_namespace=payload.get("target_namespace", "cascade-targets"),
+        target_service=service or ACTIVE_SAFE_CHAOS_SERVICES[0],
+        target_namespace=payload.get("target_namespace", ACTIVE_NAMESPACE),
         experiment_kind=payload.get("experiment_kind", "pod_kill"),
         duration_seconds=int(payload.get("duration_seconds", 30)),
         dry_run=bool(payload.get("dry_run", True)),
@@ -114,6 +116,7 @@ async def validate_existing_plan(plan_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Plan not found")
     plan = _decode_plan(row)
     result = validate_plan(plan, default_policy(), dry_run=True)
+    await _audit(plan, result)
     return {"plan_id": plan_id, **result.model_dump()}
 
 
@@ -197,6 +200,10 @@ async def _insert_violation(plan_id: str, run_id: str, kind: str, severity: str,
         "policy_json": _json(default_policy().model_dump()),
         "request_json": _json(request),
     })
+
+
+async def _audit(plan: dict[str, Any], result: Any) -> None:
+    await clickhouse.insert_chaos_policy_audit({"audit_id": "chaos_audit_" + uuid.uuid4().hex[:16], "checked_at": _now(), "plan_id": plan["plan_id"], "experiment_kind": plan["experiment_kind"], "namespace": plan["target_namespace"], "service": plan["target_service"], "allowed": 1 if result.allowed else 0, "risk_level": result.risk_level, "findings_json": _json(result.findings + result.violations), "policy_json": _json(default_policy().model_dump())})
 
 
 async def _check(base_url: str) -> bool:

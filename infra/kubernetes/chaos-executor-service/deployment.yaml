@@ -42,6 +42,8 @@ spec:
               value: redpanda.cascade-system.svc.cluster.local:9092
             - name: CHAOS_EVENTS_TOPIC
               value: chaos.experiments
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

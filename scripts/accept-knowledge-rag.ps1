@@ -55,7 +55,7 @@ try {
         if ($stats.qdrant_knowledge_points -gt 0) { Add-Pass "cascade_knowledge_base has points" } else { Add-Fail "cascade_knowledge_base point count is zero" }
         $search = HttpJson POST "http://localhost:8016/knowledge/search" @{ query = "pod restart unhealthy service anomaly"; limit = 5; filters = @{} }
         if ($search.count -ge 1 -and $search.results[0].chunk_id -and $search.results[0].chunk_text) { Add-Pass "/knowledge/search returns source-grounded chunks" } else { Add-Fail "/knowledge/search missing results or chunk text" }
-        $ctx = HttpJson POST "http://localhost:8016/knowledge/context" @{ query = "how do I investigate recommendationservice restart anomaly"; limit = 8; filters = @{} }
+        $ctx = HttpJson POST "http://localhost:8016/knowledge/context" @{ query = "how do I investigate catalogue restart anomaly"; limit = 8; filters = @{} }
         if ($ctx.evidence_chunks.Count -ge 1 -and $ctx.sources.Count -ge 1 -and $ctx.limitations.Count -ge 1) { Add-Pass "/knowledge/context returns evidence and limitations" } else { Add-Fail "/knowledge/context invalid" }
     } finally { Stop-PF }
 

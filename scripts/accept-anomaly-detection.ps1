@@ -47,6 +47,7 @@ try {
         if ($extract.windows_created -ge 0) { Add-Pass "POST /extract succeeds" } else { Add-Fail "POST /extract failed" }
         $synthetic = HttpJson POST "http://localhost:8013/features/synthetic"
         if ($synthetic.window.window_id) { Add-Pass "Synthetic Anomaly detection feature window inserted and labeled" } else { Add-Fail "Synthetic feature insert failed" }
+        $script:SyntheticService = if ($synthetic.window.service) { $synthetic.window.service } else { "phase4-synthetic-service" }
         $features = HttpJson GET "http://localhost:8013/features/recent?limit=5"
         if ($features.count -ge 1) { Add-Pass "feature-extractor /features/recent returns JSON" } else { Add-Fail "No recent feature windows" }
     } finally { Stop-PF }
@@ -58,7 +59,7 @@ try {
         if ($ready.service -eq "anomaly-detector-service") { Add-Pass "anomaly-detector-service ready" } else { Add-Fail "anomaly-detector-service not ready" }
         $models = HttpJson GET "http://localhost:8014/models/status"
         if ($models.threshold.available -and $models.rolling_zscore.available -and $null -ne $models.isolation_forest.available) { Add-Pass "/models/status reports model availability" } else { Add-Fail "/models/status invalid" }
-        $detect = HttpJson POST "http://localhost:8014/detect" @{ lookback_minutes = 240; service = "anomaly-synthetic-service"; publish = $true }
+        $detect = HttpJson POST "http://localhost:8014/detect" @{ lookback_minutes = 240; service = $script:SyntheticService; publish = $true }
         if ($detect.windows_scored -ge 1) { Add-Pass "POST /detect scores feature windows" } else { Add-Fail "POST /detect scored no windows" }
         if ($detect.anomalies_detected -ge 1) { Add-Pass "Detection persisted anomalies" } else { Add-Fail "No anomaly detected from synthetic feature window" }
     } finally { Stop-PF }

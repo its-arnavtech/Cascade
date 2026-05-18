@@ -20,3 +20,22 @@ class ImpactResponse(BaseModel):
     root_service: str
     impact_path: list[str]
     affected_services: list[str]
+
+
+class DependenciesResponse(BaseModel):
+    service_name: str
+    direction: str
+    hops: int
+    dependencies: list[str]
+
+
+class BlastRadiusRequest(BaseModel):
+    root_service: str
+    hops: int = 3
+    depth_cap: int = 4
+
+
+class CriticalPathsRequest(BaseModel):
+    root_service: str
+    depth_cap: int = 4
+    limit: int = 5

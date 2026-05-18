@@ -144,6 +144,46 @@ spec:
                   related_experiment_id String,
                   published_to_redpanda UInt8
               ) ENGINE = MergeTree ORDER BY (service, detected_at, anomaly_id);
+              CREATE TABLE IF NOT EXISTS cascade.causal_reports (
+                  report_id String,
+                  generated_at DateTime64(3),
+                  target_service String,
+                  target_feature String,
+                  source_feature String,
+                  status String,
+                  summary String,
+                  window_start Nullable(DateTime64(3)),
+                  window_end Nullable(DateTime64(3)),
+                  candidate_count UInt64,
+                  methodology_json String,
+                  limitations_json String,
+                  report_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (generated_at, report_id);
+              CREATE TABLE IF NOT EXISTS cascade.causal_candidates (
+                  report_id String,
+                  candidate_id String,
+                  generated_at DateTime64(3),
+                  rank UInt64,
+                  source_service String,
+                  target_service String,
+                  source_feature String,
+                  target_feature String,
+                  status String,
+                  rank_score Float64,
+                  best_p_value Nullable(Float64),
+                  effect_size Float64,
+                  lag_windows UInt64,
+                  sample_count UInt64,
+                  pearson_json String,
+                  spearman_json String,
+                  granger_json String,
+                  topology_distance Nullable(Int64),
+                  anomaly_context_json String,
+                  limitations_json String,
+                  candidate_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (report_id, rank, candidate_id);
               CREATE TABLE IF NOT EXISTS cascade.model_runs (
                   run_id String,
                   started_at DateTime64(3),
@@ -382,6 +422,18 @@ spec:
                   policy_json String,
                   request_json String
               ) ENGINE = MergeTree ORDER BY (created_at, violation_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_policy_audit (
+                  audit_id String,
+                  checked_at DateTime64(3),
+                  plan_id String,
+                  experiment_kind String,
+                  namespace String,
+                  service String,
+                  allowed UInt8,
+                  risk_level String,
+                  findings_json String,
+                  policy_json String
+              ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
               CREATE TABLE IF NOT EXISTS cascade.remediation_plans (
                   plan_id String,
                   created_at DateTime64(3),

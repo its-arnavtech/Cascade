@@ -47,6 +47,11 @@ class DeterministicGraphRuntime:
         if node == "telemetry_analyst":
             service = req.service or _service(state)
             if service:
+                workload = await self._tool(state, "get_target_workload", {"service": service, "limit": 10})
+                data = workload.get("data", {})
+                if data:
+                    state.target_workload_evidence.append(data)
+            if service:
                 events = await self._tool(state, "get_service_events", {"service": service, "limit": 10})
                 state.telemetry_evidence.extend(events.get("data", {}).get("events", [])[:10])
             features = await self._tool(state, "get_recent_feature_windows", {"limit": 10, "service": service})
@@ -55,6 +60,9 @@ class DeterministicGraphRuntime:
         if node == "topology_analyst":
             service = req.service or _service(state)
             if service:
+                blast = await self._tool(state, "get_latest_blast_radius", {"root_service": service})
+                if blast.get("data"):
+                    state.blast_radius_evidence.append(blast["data"])
                 impact = await self._tool(state, "get_service_impact", {"root_service": service})
                 state.topology_evidence.append(impact.get("data", {}))
                 up = await self._tool(state, "get_upstream_services", {"service": service})
@@ -73,6 +81,9 @@ class DeterministicGraphRuntime:
             return {"knowledge_items": len(state.knowledge_evidence)}
         if node == "incident_historian":
             service = req.service or _service(state)
+            causal = await self._tool(state, "get_causal_report", {"incident_id": req.trigger_id, "service": service})
+            if causal.get("data"):
+                state.causal_report_evidence.append(causal["data"])
             incidents = await self._tool(state, "get_recent_incidents", {"limit": 5, "service": service})
             state.incident_refs.extend(incidents.get("data", {}).get("incidents", [])[:5])
             similar = await self._tool(state, "search_similar_incidents", {"query": req.objective, "limit": 5, "service": service})
@@ -92,8 +103,16 @@ class DeterministicGraphRuntime:
         return {"skipped": node}
 
     async def _tool(self, state: AgentState, tool_name: str, payload: dict[str, Any]) -> dict[str, Any]:
-        result = await self.invoke_tool(tool_name, payload)
-        state.tool_call_history.append({"tool_name": tool_name, "status": result.get("status"), "evidence_refs": result.get("evidence_refs", [])})
+        try:
+            result = await self.invoke_tool(tool_name, payload)
+        except Exception as exc:
+            result = {"tool_name": tool_name, "status": "error", "data": {}, "evidence_refs": [], "error": f"{exc.__class__.__name__}: {exc}"}
+        state.tool_call_history.append({
+            "tool_name": tool_name,
+            "status": result.get("status"),
+            "evidence_refs": result.get("evidence_refs", []),
+            "error": result.get("error") or "",
+        })
         return result
 
 

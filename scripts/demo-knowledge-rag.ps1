@@ -30,14 +30,14 @@ try {
     try {
         foreach ($query in @(
             "pod restart unhealthy service anomaly",
-            "how do I investigate recommendationservice restart anomaly",
+            "how do I investigate catalogue restart anomaly",
             "what does Cascade know about service latency",
             "which stored incidents mention root cause or affected services"
         )) {
             Write-Host ""; Write-Host "Query: $query"
             HttpJson POST "http://localhost:8016/knowledge/search" @{ query = $query; limit = 3; filters = @{} } | ConvertTo-Json -Depth 20
         }
-        HttpJson POST "http://localhost:8016/knowledge/context" @{ query = "how do I investigate recommendationservice restart anomaly"; limit = 8; filters = @{} } | ConvertTo-Json -Depth 20
+        HttpJson POST "http://localhost:8016/knowledge/context" @{ query = "how do I investigate catalogue restart anomaly"; limit = 8; filters = @{} } | ConvertTo-Json -Depth 20
     } finally { Stop-PF }
 
     Write-Section "Retrieval-Service Integration"

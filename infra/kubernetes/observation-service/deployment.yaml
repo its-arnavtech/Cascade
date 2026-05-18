@@ -15,6 +15,7 @@ spec:
       labels:
         app: observation-service
     spec:
+      serviceAccountName: observation-service
       containers:
         - name: observation-service
           image: cascade-observation-service:dev
@@ -35,6 +36,15 @@ spec:
               value: telemetry.raw
             - name: TELEMETRY_PUBLISH_INTERVAL_SECONDS
               value: "10"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 400m
+              memory: 384Mi
           readinessProbe:
             httpGet:
               path: /health

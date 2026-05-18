@@ -59,7 +59,7 @@ try {
         Write-Section "Safe Action Demo"
         $investigation = HttpJson POST "http://localhost:$Port/api/agent/investigations" @{
             trigger_type = "manual"
-            service = "recommendationservice"
+            service = "catalogue"
             namespace = "cascade-targets"
             objective = "Demo deterministic investigation from Command Center UI UI path"
             mode = "deterministic"
@@ -69,7 +69,7 @@ try {
         $plan = HttpJson POST "http://localhost:$Port/api/remediation/recommender/plans" @{
             trigger_type = "investigation"
             trigger_id = $investigation.investigation_id
-            service = "recommendationservice"
+            service = "catalogue"
             namespace = "cascade-targets"
             objective = "Demo remediation plan for dry-run only"
             preferred_action_type = "investigate_only"

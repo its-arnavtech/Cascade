@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCreateInvestigation, useCreateRemediationPlan, useIncident, useIncidents } from "../api/hooks";
 import { Badge } from "../components/Badge";
+import { CausalReportPanel, EvidenceReportPanel } from "../components/IntelligencePanels";
 import { JsonBlock } from "../components/JsonBlock";
 import { StatusPanel } from "../components/cards/StatusPanel";
 import { DataTable } from "../components/tables/DataTable";
@@ -41,7 +42,7 @@ export function IncidentsPage() {
             <IncidentReport value={detail.data} fallback={selectedIncident} selected={selected} />
           </>
         ) : (
-          <div className="state">Select an incident to view report and evidence.</div>
+          <div className="state">No data returned. Select an incident to view report and evidence.</div>
         )}
       </StatusPanel>
     </div>
@@ -74,6 +75,11 @@ function IncidentReport({ value, fallback, selected }: { value: unknown; fallbac
       </section>
       <section className="detail-card report-content">
         <h3>{String(report?.title ?? incident?.title ?? "Incident report")}</h3>
+        <LabeledRow label="Hypothesis" value={formatValue(report?.hypothesis ?? report?.suspected_root_cause ?? incident.root_cause_service)} />
+        <LabeledRow label="Causal summary" value={formatValue(report?.causal_summary ?? report?.summary ?? incident.summary)} />
+        <LabeledRow label="Blast-radius summary" value={formatValue(report?.affected_services ?? incident.affected_services)} />
+        <LabeledRow label="Rejected alternatives" value={formatValue(report?.rejected_alternatives)} />
+        <LabeledRow label="Recommended safe action" value={formatValue(firstValue(report?.recommended_next_steps ?? report?.suggested_remediation))} />
         {report ? (
           Object.entries(report).filter(([key]) => key !== "title").slice(0, 8).map(([key, reportValue]) => (
             <LabeledRow key={key} label={labelize(key)} value={formatValue(reportValue)} />
@@ -84,6 +90,14 @@ function IncidentReport({ value, fallback, selected }: { value: unknown; fallbac
             <JsonBlock value={value} />
           </>
         )}
+      </section>
+      <section className="detail-card report-content">
+        <h3>Intelligence summary</h3>
+        <CausalReportPanel value={report ?? incident} />
+      </section>
+      <section className="detail-card report-content">
+        <h3>Evidence</h3>
+        <EvidenceReportPanel value={report ?? record} />
       </section>
     </div>
   );
@@ -99,8 +113,13 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function formatValue(value: unknown): React.ReactNode {
   if (value === null || value === undefined || value === "") return "-";
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "No data returned.";
   if (typeof value === "object") return <JsonBlock value={value} />;
   return String(value);
+}
+
+function firstValue(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function labelize(value: string) {

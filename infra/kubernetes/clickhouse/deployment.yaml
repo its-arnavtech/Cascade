@@ -56,4 +56,3 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 20
             failureThreshold: 6
-

@@ -33,6 +33,8 @@ spec:
               value: http://topology-service.cascade-system.svc.cluster.local:8004
             - name: RETRIEVAL_SERVICE_URL
               value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready

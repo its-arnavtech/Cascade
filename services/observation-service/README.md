@@ -25,8 +25,8 @@ Example response:
   "timestamp": "2026-05-12T22:15:30.123456Z",
   "pods": [
     {
-      "service_name": "cartservice",
-      "pod_name": "cartservice-7b8c9d45f6-abc12",
+      "service_name": "carts",
+      "pod_name": "carts-7b8c9d45f6-abc12",
       "namespace": "cascade-targets",
       "pod_phase": "Running",
       "cpu_usage_cores": 0.0123,

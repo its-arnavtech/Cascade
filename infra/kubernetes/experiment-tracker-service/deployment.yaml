@@ -27,6 +27,15 @@ spec:
               value: redpanda.cascade-system.svc.cluster.local:9092
             - name: EXPERIMENT_TOPIC
               value: experiments.events
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 75m
+              memory: 96Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
           readinessProbe:
             httpGet:
               path: /health

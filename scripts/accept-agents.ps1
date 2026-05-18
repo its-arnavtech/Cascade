@@ -53,8 +53,8 @@ try {
             @{ Name = "get_recent_anomalies"; Body = @{ limit = 3 } },
             @{ Name = "get_recent_events"; Body = @{ limit = 3 } },
             @{ Name = "search_knowledge"; Body = @{ query = "pod restart unhealthy service anomaly"; limit = 3; filters = @{} } },
-            @{ Name = "get_service_impact"; Body = @{ root_service = "recommendationservice" } },
-            @{ Name = "search_similar_incidents"; Body = @{ query = "restart anomaly"; limit = 3; service = "recommendationservice" } }
+            @{ Name = "get_service_impact"; Body = @{ root_service = "catalogue" } },
+            @{ Name = "search_similar_incidents"; Body = @{ query = "restart anomaly"; limit = 3; service = "catalogue" } }
         )
         foreach ($check in $toolChecks) {
             $result = HttpJson POST "http://localhost:8017/tools/$($check.Name)" $check.Body
@@ -63,9 +63,9 @@ try {
 
         $investigation = HttpJson POST "http://localhost:8018/investigations" @{
             trigger_type = "service"
-            service = "recommendationservice"
+            service = "catalogue"
             namespace = "cascade-targets"
-            objective = "Investigate recommendationservice restart anomaly using stored Cascade evidence"
+            objective = "Investigate catalogue restart anomaly using stored Cascade evidence"
             mode = "deterministic"
             max_steps = 12
         } 1

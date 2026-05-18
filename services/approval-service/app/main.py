@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
+from services.shared.remediation.approval import is_approval_current
 from services.shared.remediation.events import remediation_event
 from services.shared.remediation.safety import validate_approval
 from services.shared.remediation.schemas import ApprovalRequest
@@ -114,7 +115,8 @@ async def approval_detail(approval_id: str) -> dict[str, Any]:
 @app.get("/plans/{plan_id}/approval-status")
 async def approval_status(plan_id: str) -> dict[str, Any]:
     row = await clickhouse.latest_remediation_approval(plan_id)
-    return {"plan_id": plan_id, "approval": _decode_approval(row) if row else None, "approved": bool(row and row.get("decision") == "approved")}
+    approval = _decode_approval(row) if row else None
+    return {"plan_id": plan_id, "approval": approval, "approved": is_approval_current(approval), "approval_current": is_approval_current(approval)}
 
 
 async def _publish(event_type: str, plan: dict[str, Any], approval: dict[str, Any], summary: str) -> None:
@@ -129,6 +131,7 @@ async def _publish(event_type: str, plan: dict[str, Any], approval: dict[str, An
 def _decode_approval(row: dict[str, Any]) -> dict[str, Any]:
     decoded = dict(row)
     decoded["metadata"] = _loads(decoded.pop("approval_metadata_json", "{}"))
+    decoded["approval_current"] = is_approval_current(decoded)
     return decoded
 
 

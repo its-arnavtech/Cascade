@@ -1,6 +1,6 @@
 # Chaos engineering - Chaos Engineering Automation
 
-Chaos engineering lets Cascade safely plan, execute, observe, and score controlled Chaos Mesh experiments against the Online Boutique target namespace.
+Chaos engineering lets Cascade safely plan, execute, observe, and score controlled Chaos Mesh experiments against the Sock Shop target namespace.
 
 Chaos engineering executes controlled chaos only. It does not execute remediation, patch application deployments, scale workloads, run autonomous agent-triggered chaos, or provide a UI.
 
@@ -56,7 +56,7 @@ Endpoints:
 Default allowlist:
 
 - namespace: `cascade-targets`
-- Online Boutique services only
+- Sock Shop safe chaos services only
 - experiment kinds: `pod_kill`, `network_delay`, `stress_cpu`
 
 Default denylist:
@@ -175,7 +175,7 @@ Demo:
 
 ```powershell
 .\scripts\demo-chaos.ps1 -DryRunOnly
-.\scripts\demo-chaos.ps1 -TargetService recommendationservice -ObservationWindowSeconds 60
+.\scripts\demo-chaos.ps1 -TargetService catalogue -ObservationWindowSeconds 60
 ```
 
 Debug:

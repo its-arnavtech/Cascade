@@ -24,7 +24,7 @@ try {
 
     Write-Section "Create Storage and memory Demo Experiment"
     Start-PF "experiment-tracker-service" "8002:8002"
-    try { $experiment = HttpJson POST "http://localhost:8002/experiments" @{ experiment_type = "storage-memory-demo"; target_service = "cartservice"; namespace = "cascade-targets"; duration_seconds = 30; chaos_mesh_resource = "storage-memory-demo" } } finally { Stop-PF }
+    try { $experiment = HttpJson POST "http://localhost:8002/experiments" @{ experiment_type = "storage-memory-demo"; target_service = "carts"; namespace = "cascade-targets"; duration_seconds = 30; chaos_mesh_resource = "storage-memory-demo" } } finally { Stop-PF }
     $experiment | ConvertTo-Json -Depth 10
 
     Write-Section "Wait For Archival"
@@ -35,7 +35,7 @@ try {
     try { $incident = HttpJson POST "http://localhost:8005/reconstruct" @{ experiment_id = $experiment.experiment_id; lookback_seconds = 60; window_seconds = 300 } } finally { Stop-PF }
     Start-PF "topology-service" "8004:8004"
     try {
-        $impact = HttpJson POST "http://localhost:8004/topology/impact" @{ root_service = "cartservice" }
+        $impact = HttpJson POST "http://localhost:8004/topology/impact" @{ root_service = "carts" }
         $topology = HttpJson GET "http://localhost:8004/topology"
     } finally { Stop-PF }
     Start-PF "incident-timeline-service" "8006:8006"
@@ -68,4 +68,3 @@ try {
 } finally {
     Stop-PF
 }
-

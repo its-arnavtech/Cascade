@@ -24,6 +24,13 @@ spec:
           ports:
             - name: http
               containerPort: 6333
+          env:
+            - name: QDRANT__SERVICE__MAX_WORKERS
+              value: "2"
+            - name: QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS
+              value: "2"
+            - name: QDRANT__STORAGE__OPTIMIZERS__MAX_OPTIMIZATION_THREADS
+              value: "1"
           resources:
             requests:
               cpu: "100m"
@@ -45,4 +52,3 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 20
             failureThreshold: 6
-

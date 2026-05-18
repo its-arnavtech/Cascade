@@ -37,6 +37,15 @@ spec:
               value: cascade_knowledge_base
             - name: EMBEDDING_DIMENSIONS
               value: "128"
+            - name: WEB_CONCURRENCY
+              value: "1"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: 600m
+              memory: 640Mi
           readinessProbe:
             httpGet:
               path: /ready

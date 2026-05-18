@@ -6,16 +6,21 @@ import type {
   ChaosPlan,
   ChaosRun,
   CountMap,
+  BlastRadius,
+  CausalReport,
   FeatureWindow,
   HealthCheck,
   Incident,
   Investigation,
   JsonRecord,
   KnowledgeResult,
+  PolicyAuditRecord,
   RemediationExecution,
   RemediationPlan,
   ResilienceScore,
+  TargetWorkload,
   TelemetryEvent,
+  TopologyGraph,
 } from "./types";
 
 const poll = { refetchInterval: refreshIntervalMs };
@@ -57,6 +62,66 @@ export function useKnowledgeSearch() {
 export function useKnowledgeContext() {
   return useMutation({
     mutationFn: (body: JsonRecord) => apiPost<JsonRecord>("/knowledge/knowledge/context", body),
+  });
+}
+
+export function useTopologyGraph() {
+  return useQuery({ queryKey: ["topology-graph"], queryFn: () => apiGet<TopologyGraph>("/topology/topology/graph"), ...poll });
+}
+
+export function useTopologySnapshot() {
+  return useQuery({ queryKey: ["topology-snapshot"], queryFn: () => apiGet<{ snapshot?: TopologyGraph | null }>("/retrieval/topology/snapshot/latest"), ...poll });
+}
+
+export function useTargetWorkload() {
+  return useQuery({
+    queryKey: ["target-workload"],
+    queryFn: () => apiGet<TargetWorkload>("/target/target/workload"),
+    ...poll,
+  });
+}
+
+export function useBlastRadius(rootService?: string) {
+  return useQuery({
+    queryKey: ["blast-radius", rootService],
+    enabled: Boolean(rootService),
+    queryFn: () => apiPost<BlastRadius>("/topology/topology/blast-radius", { root_service: rootService }),
+    ...poll,
+  });
+}
+
+export function useAnalyzeBlastRadius() {
+  return useMutation({
+    mutationFn: (body: { root_service: string } & JsonRecord) => apiPost<BlastRadius>("/topology/topology/blast-radius", body),
+  });
+}
+
+export function useCausalIncidents() {
+  return useQuery({ queryKey: ["causal-reports"], queryFn: () => apiGet<{ reports: CausalReport[]; count: number }>("/causality/causality/reports/recent"), ...poll });
+}
+
+export function useCausalIncident(id?: string) {
+  return useQuery({ queryKey: ["causal-report", id], enabled: Boolean(id), queryFn: () => apiGet<{ report: CausalReport; candidates?: JsonRecord[] }>(`/causality/causality/reports/${id}`) });
+}
+
+export function useAnalyzeCausality() {
+  return useMutation({
+    mutationFn: (body: { target_service?: string } & JsonRecord) => apiPost<{ report: CausalReport }>("/causality/causality/analyze", body),
+  });
+}
+
+export function useCausalReport() {
+  return useMutation({
+    mutationFn: (body: JsonRecord) => apiPost<CausalReport>("/timeline/report", body),
+  });
+}
+
+export function usePolicyAuditRecords(enabled = false) {
+  return useQuery({
+    queryKey: ["policy-audit-records"],
+    enabled,
+    queryFn: () => apiGet<{ records?: PolicyAuditRecord[]; audits?: PolicyAuditRecord[]; count?: number }>("/remediation/executor/safety/audit"),
+    ...poll,
   });
 }
 
@@ -151,6 +216,9 @@ export function useDryRunRemediation() {
 const healthTargets = [
   ["retrieval-service", "/retrieval/health"],
   ["knowledge-retrieval-service", "/knowledge/health"],
+  ["topology-service", "/topology/health"],
+  ["causal-reconstruction-service", "/causality/health"],
+  ["incident-timeline-service", "/timeline/health"],
   ["agent-tool-gateway", "/tools/health"],
   ["agent-orchestrator-service", "/agent/health"],
   ["chaos-planner-service", "/chaos/planner/health"],

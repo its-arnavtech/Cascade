@@ -4,12 +4,14 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from services.shared.targets.catalog import ACTIVE_NAMESPACE, ACTIVE_PROTECTED_SERVICES, ACTIVE_SAFE_CHAOS_SERVICES
+
 
 class RemediationPlanRequest(BaseModel):
     trigger_type: str = Field(default="manual", pattern="^(anomaly|incident|investigation|chaos|manual)$")
     trigger_id: str = ""
-    service: str = "recommendationservice"
-    namespace: str = "cascade-targets"
+    service: str = "catalogue"
+    namespace: str = ACTIVE_NAMESPACE
     objective: str = "Recommend safe remediation next steps"
     preferred_action_type: str = "investigate_only"
 
@@ -30,9 +32,11 @@ class ExecutionRequest(BaseModel):
 
 
 class RemediationPolicy(BaseModel):
-    allowed_namespaces: list[str] = Field(default_factory=lambda: ["cascade-targets"])
+    allowed_namespaces: list[str] = Field(default_factory=lambda: [ACTIVE_NAMESPACE])
     denied_namespaces: list[str] = Field(default_factory=lambda: ["kube-system", "kube-public", "kube-node-lease", "local-path-storage", "monitoring", "cascade-system", "default"])
-    allowed_services: list[str] = Field(default_factory=lambda: ["frontend", "cartservice", "checkoutservice", "productcatalogservice", "currencyservice", "paymentservice", "shippingservice", "emailservice", "recommendationservice", "adservice", "redis-cart"])
+    allowed_services: list[str] = Field(default_factory=lambda: list(ACTIVE_SAFE_CHAOS_SERVICES))
+    denied_services: list[str] = Field(default_factory=lambda: ["clickhouse", "redpanda", "qdrant", "postgres", "postgresql", "mysql", "mongodb", "kafka"])
+    protected_services: list[str] = Field(default_factory=lambda: list(ACTIVE_PROTECTED_SERVICES) + ["clickhouse", "redpanda", "qdrant", "prometheus", "grafana", "chaos-controller-manager"])
     supported_action_types: list[str] = Field(default_factory=lambda: ["investigate_only", "restart_deployment", "scale_deployment_noop", "rollback_deployment", "cleanup_cascade_chaos_resource"])
     executable_action_types: list[str] = Field(default_factory=lambda: ["restart_deployment", "scale_deployment_noop", "cleanup_cascade_chaos_resource"])
     text_only_action_types: list[str] = Field(default_factory=lambda: ["investigate_only", "rollback_deployment"])
@@ -40,6 +44,7 @@ class RemediationPolicy(BaseModel):
     require_evidence_for_plan: bool = True
     require_approval_for_execution: bool = True
     require_rollback_for_execution: bool = True
+    require_post_checks_for_execution: bool = True
     execution_enabled_default: bool = False
     cascade_chaos_cleanup_labels: dict[str, str] = Field(default_factory=lambda: {"cascade.io/phase": "phase7", "cascade.io/managed-by": "chaos-executor-service"})
 

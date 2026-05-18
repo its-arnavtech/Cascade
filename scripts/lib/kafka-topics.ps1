@@ -5,7 +5,8 @@ $CascadeRequiredRedpandaTopics = @(
     "anomalies.detected",
     "agent.investigations",
     "chaos.experiments",
-    "remediation.actions"
+    "remediation.actions",
+    "causality.reports"
 )
 
 function Get-CascadeRedpandaTopicNames {

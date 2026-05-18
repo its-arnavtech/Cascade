@@ -55,6 +55,8 @@ spec:
               value: "120"
             - name: RATE_LIMIT_BURST
               value: "60"
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /health

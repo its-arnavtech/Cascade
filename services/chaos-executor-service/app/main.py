@@ -82,13 +82,18 @@ async def ready() -> dict[str, Any]:
 
 @app.get("/safety/policy")
 async def safety_policy() -> dict[str, Any]:
-    return default_policy().model_dump()
+    policy = default_policy()
+    data = policy.model_dump()
+    data["denied"] = {"namespaces": policy.denied_namespaces, "services": policy.denied_services, "resource_kinds": policy.denied_resource_kinds}
+    data["protected"] = {"services": policy.protected_services}
+    return data
 
 
 @app.post("/runs")
 async def start_run(payload: ChaosRunRequest) -> dict[str, Any]:
     plan = await _load_plan(payload.plan_id)
     safety = validate_plan(plan, default_policy(), approved=payload.approved, dry_run=payload.dry_run)
+    await _audit(plan, safety)
     if not safety.allowed:
         await _insert_violation(plan["plan_id"], "", "execution_rejected", "high", "; ".join(safety.violations), payload.model_dump())
         await _publish("chaos.plan.rejected", plan, {}, None, "; ".join(safety.violations))
@@ -293,6 +298,10 @@ async def _complete_experiment_record(plan: dict[str, Any]) -> None:
 
 async def _insert_violation(plan_id: str, run_id: str, kind: str, severity: str, message: str, request: dict[str, Any]) -> None:
     await clickhouse.insert_chaos_safety_violation({"violation_id": "chaos_violation_" + uuid.uuid4().hex[:16], "created_at": _now(), "plan_id": plan_id, "run_id": run_id, "violation_type": kind, "severity": severity, "message": message, "policy_json": _json(default_policy().model_dump()), "request_json": _json(request)})
+
+
+async def _audit(plan: dict[str, Any], result: Any) -> None:
+    await clickhouse.insert_chaos_policy_audit({"audit_id": "chaos_audit_" + uuid.uuid4().hex[:16], "checked_at": _now(), "plan_id": plan["plan_id"], "experiment_kind": plan["experiment_kind"], "namespace": plan["target_namespace"], "service": plan["target_service"], "allowed": 1 if result.allowed else 0, "risk_level": result.risk_level, "findings_json": _json(result.findings + result.violations), "policy_json": _json(default_policy().model_dump())})
 
 
 async def _publish(event_type: str, plan: dict[str, Any], run: dict[str, Any], score: dict[str, Any] | None, summary: str) -> None:

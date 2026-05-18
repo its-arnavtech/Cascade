@@ -36,6 +36,8 @@ spec:
               value: remediation.actions
             - name: EXECUTION_ENABLED
               value: "false"
+            - name: WEB_CONCURRENCY
+              value: "1"
           readinessProbe:
             httpGet:
               path: /ready
