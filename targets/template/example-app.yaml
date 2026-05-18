@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-frontend
+  namespace: cascade-targets
+  labels:
+    app: my-frontend
+    app.kubernetes.io/name: my-frontend
+    app.kubernetes.io/part-of: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-frontend
+      app.kubernetes.io/name: my-frontend
+      app.kubernetes.io/part-of: my-app
+  template:
+    metadata:
+      labels:
+        app: my-frontend
+        app.kubernetes.io/name: my-frontend
+        app.kubernetes.io/part-of: my-app
+    spec:
+      containers:
+        - name: http-echo
+          image: hashicorp/http-echo:1.0
+          args:
+            - "-text=hello from my-frontend"
+            - "-listen=:8080"
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-frontend
+  namespace: cascade-targets
+  labels:
+    app: my-frontend
+    app.kubernetes.io/name: my-frontend
+    app.kubernetes.io/part-of: my-app
+spec:
+  selector:
+    app: my-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app-load-generator
+  namespace: cascade-targets
+  labels:
+    app: my-app-load-generator
+    app.kubernetes.io/name: my-app-load-generator
+    app.kubernetes.io/part-of: my-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-app-load-generator
+  template:
+    metadata:
+      labels:
+        app: my-app-load-generator
+        app.kubernetes.io/name: my-app-load-generator
+        app.kubernetes.io/part-of: my-app
+    spec:
+      containers:
+        - name: curl
+          image: curlimages/curl:8.11.1
+          command:
+            - sh
+            - -c
+            - while true; do curl -fsS http://my-frontend.cascade-targets.svc.cluster.local/ >/dev/null || true; sleep 5; done
+          resources:
+            requests:
+              cpu: 10m
+              memory: 24Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi

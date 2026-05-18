@@ -1,0 +1,19 @@
+name: my-app
+namespace: cascade-targets
+frontend_service: my-frontend
+services:
+  - my-frontend
+  - my-app-load-generator
+dependency_edges:
+  - from: my-app-load-generator
+    to: my-frontend
+safe_chaos_services:
+  - my-frontend
+protected_services:
+  - my-app-load-generator
+load_generator:
+  name: my-app-load-generator
+  image: curlimages/curl:8.11.1
+  target_url: http://my-frontend.cascade-targets.svc.cluster.local/
+  users: 1
+  spawn_rate: 1

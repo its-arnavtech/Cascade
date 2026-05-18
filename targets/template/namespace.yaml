@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cascade-targets
+  labels:
+    cascade.io/monitored: "true"

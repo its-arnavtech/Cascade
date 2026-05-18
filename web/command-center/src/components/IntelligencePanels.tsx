@@ -12,7 +12,7 @@ export function TargetWorkloadPanel() {
   const target = normalizeTarget(workload.data, graph);
 
   return (
-    <StatusPanel title="Target Workload" loading={workload.isLoading && snapshot.isLoading} error={workload.error && snapshot.error ? workload.error : undefined}>
+    <StatusPanel title="Active Target Workload" loading={workload.isLoading && snapshot.isLoading} error={workload.error && snapshot.error ? workload.error : undefined}>
       {graph.services.length ? (
         <div className="intelligence-panel">
           <div className="intel-summary">
@@ -31,7 +31,7 @@ export function TargetWorkloadPanel() {
           <ServiceChips services={graph.services} protectedServices={target.protected_services} />
         </div>
       ) : (
-        <div className="state">No data returned.</div>
+        <div className="state">No target topology returned. Validate and register a target config, then verify telemetry.</div>
       )}
     </StatusPanel>
   );
@@ -156,7 +156,7 @@ export function SafetyFindingsPanel({ policy, record, dryRun }: { policy?: unkno
 
 export function TopologyGraphView({ value }: { value: unknown }) {
   const graph = normalizeTopology(value);
-  if (!graph.services.length) return <div className="state">No data returned.</div>;
+  if (!graph.services.length) return <div className="state">No dependency graph returned. Define dependency_edges in the active target config.</div>;
   return (
     <div className="graph-list">
       {graph.services.map((service) => {

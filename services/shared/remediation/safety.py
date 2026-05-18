@@ -110,6 +110,8 @@ def _post_checks(plan: dict[str, Any]) -> list[Any]:
     checks = plan.get("post_checks")
     if checks is None:
         checks = (plan.get("plan") or {}).get("post_checks")
+    if checks is None:
+        checks = ((plan.get("plan") or {}).get("plan") or {}).get("post_checks")
     return checks or []
 
 

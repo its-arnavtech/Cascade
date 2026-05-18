@@ -6,3 +6,4 @@ metadata:
     app.kubernetes.io/name: cascade-targets
     app.kubernetes.io/part-of: cascade
     cascade.io/role: target-workload
+    cascade.io/monitored: "true"
