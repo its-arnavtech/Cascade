@@ -72,10 +72,10 @@ $env:TARGET_NAMESPACE = "cascade-targets"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-For current kind-based development, use Redpanda through `.\scripts\deploy-phase-2.ps1`. The old Docker Compose Apache Kafka setup remains available only as a legacy local compatibility path:
+For current kind-based development, use Redpanda through `.\scripts\deploy-telemetry.ps1`. The old Docker Compose Apache Kafka setup remains available only as a legacy local compatibility path:
 
 ```powershell
-docker compose -f infra/kafka/docker-compose.yaml up -d
+docker compose -f the legacy Kafka archive up -d
 ```
 
 If Prometheus is running in Kubernetes, port-forward it first:

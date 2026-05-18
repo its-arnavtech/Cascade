@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Cascade Phase 4 Anomaly Detected Event",
+  "title": "Cascade Anomaly detection Anomaly Detected Event",
   "type": "object",
   "required": [
     "schema_version",

@@ -28,17 +28,17 @@ export function AboutPage() {
       </section>
       <section className="panel">
         <div className="section-title">Local commands</div>
-        <pre className="code-block">.\scripts\deploy-phase-9.ps1{"\n"}.\scripts\accept-phase-9.ps1{"\n"}kubectl port-forward -n cascade-system svc/command-center 18300:8030</pre>
+        <pre className="code-block">.\scripts\deploy.ps1{"\n"}.\scripts\accept.ps1{"\n"}kubectl port-forward -n cascade-system svc/command-center 18300:8030</pre>
       </section>
       <section className="panel">
         <div className="section-title">Current status</div>
         <table>
-          <caption className="sr-only">Cascade delivery status by phase</caption>
-          <thead><tr><th>Phase</th><th>Name</th><th>Status</th></tr></thead>
+          <caption className="sr-only">Cascade delivery status by area</caption>
+          <thead><tr><th>Area</th><th>Name</th><th>Status</th></tr></thead>
           <tbody>
-            <tr><td>1-8</td><td>Core services and reliability workflows</td><td><Badge tone="good">implemented</Badge></td></tr>
-            <tr><td>9</td><td>Operator command center</td><td><Badge tone="good">implemented</Badge></td></tr>
-            <tr><td>10</td><td>Production hardening</td><td><Badge tone="info">planned</Badge></td></tr>
+            <tr><td>Core</td><td>Services and reliability workflows</td><td><Badge tone="good">implemented</Badge></td></tr>
+            <tr><td>UI</td><td>Operator command center</td><td><Badge tone="good">implemented</Badge></td></tr>
+            <tr><td>Hardening</td><td>Production readiness</td><td><Badge tone="info">planned</Badge></td></tr>
           </tbody>
         </table>
       </section>

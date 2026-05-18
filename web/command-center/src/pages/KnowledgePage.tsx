@@ -11,14 +11,14 @@ export function KnowledgePage() {
   const context = useKnowledgeContext();
   const [query, setQuery] = useState("recommendationservice latency runbook");
   const [service, setService] = useState("");
-  const [phase, setPhase] = useState("");
+  const [area, setArea] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [showRawContext, setShowRawContext] = useState(false);
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!query.trim()) return;
-    const body = { query, limit: 8, filters: { service: service || undefined, phase: phase || undefined } };
+    const body = { query, limit: 8, filters: { service: service || undefined, phase: area || undefined } };
     search.mutate(body);
     context.mutate(body);
   }
@@ -43,7 +43,7 @@ export function KnowledgePage() {
       <form className="knowledge-search" onSubmit={submit}>
         <div className="form-field full"><label htmlFor="knowledge-query">Query</label><textarea id="knowledge-query" rows={3} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Describe the reliability question or runbook topic" />{!query.trim() ? <span className="hint">Enter a search query</span> : null}</div>
         <div className="form-field"><label htmlFor="knowledge-service">Service</label><input id="knowledge-service" value={service} onChange={(e) => setService(e.target.value)} placeholder="recommendationservice" /></div>
-        <div className="form-field"><label htmlFor="knowledge-phase">Phase</label><input id="knowledge-phase" value={phase} onChange={(e) => setPhase(e.target.value)} placeholder="phase-9" /></div>
+        <div className="form-field"><label htmlFor="knowledge-area">Area</label><input id="knowledge-area" value={area} onChange={(e) => setArea(e.target.value)} placeholder="command-center" /></div>
         <button type="submit" disabled={!query.trim()}>Search</button>
       </form>
       <StatusPanel title="Search Results" loading={search.isPending} error={search.error}>

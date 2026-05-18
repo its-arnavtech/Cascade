@@ -7,26 +7,26 @@ Cascade runs locally on kind in the `cascade-system` namespace and observes demo
 Deploy phases in order when starting from a fresh cluster:
 
 ```powershell
-.\scripts\deploy-phase-2.ps1
-.\scripts\deploy-phase-3.ps1
-.\scripts\deploy-phase-4.ps1
-.\scripts\deploy-phase-5.ps1
-.\scripts\deploy-phase-6.ps1
-.\scripts\deploy-phase-7.ps1
-.\scripts\deploy-phase-8.ps1
-.\scripts\deploy-phase-9.ps1
+.\scripts\deploy-telemetry.ps1
+.\scripts\deploy-storage-memory.ps1
+.\scripts\deploy-anomaly-detection.ps1
+.\scripts\deploy-knowledge-rag.ps1
+.\scripts\deploy-agents.ps1
+.\scripts\deploy-chaos.ps1
+.\scripts\deploy-remediation.ps1
+.\scripts\deploy.ps1
 ```
 
-For a cluster that already has Phase 8 healthy, Phase 9 can be refreshed directly:
+For a cluster that already has Remediation healthy, Command Center UI can be refreshed directly:
 
 ```powershell
-.\scripts\deploy-phase-9.ps1 -SkipPhase8Deploy
+.\scripts\deploy.ps1 -SkipRemediationDeploy
 ```
 
 ## Acceptance
 
 ```powershell
-.\scripts\accept-phase-9.ps1
+.\scripts\accept.ps1
 .\scripts\accept-all.ps1
 ```
 
@@ -68,7 +68,7 @@ Collect a support bundle:
 .\scripts\debug-all.ps1
 ```
 
-Phase-specific scripts remain available, including `debug-phase-9.ps1` for Command Center resources and proxy checks.
+Phase-specific scripts remain available, including `debug.ps1` for Command Center resources and proxy checks.
 
 ## Backups
 
@@ -83,7 +83,7 @@ Restore scripts are dry-run by default and require `-ConfirmRestore`.
 
 - Real remediation execution is disabled by default.
 - The Command Center proxy blocks real remediation and real chaos execution unless explicitly reconfigured.
-- Phase 7 acceptance should use `-DryRunOnly` for normal validation.
+- Chaos engineering acceptance should use `-DryRunOnly` for normal validation.
 - Local rate limiting is in-memory and applies only to the `command-center-api` pod.
 
 ## Reset And Cleanup
@@ -91,9 +91,9 @@ Restore scripts are dry-run by default and require `-ConfirmRestore`.
 Use phase reset scripts when a local demo has accumulated too much state:
 
 ```powershell
-.\scripts\reset-phase-9.ps1
-.\scripts\reset-phase-8.ps1
-.\scripts\reset-phase-7.ps1
+.\scripts\reset-command-center.ps1
+.\scripts\reset-remediation.ps1
+.\scripts\reset-chaos.ps1
 ```
 
 Repeated demos create additional ClickHouse rows. For latest run views, query by the relevant timestamp field and group by run or plan identifier instead of treating raw transition rows as unique final states.

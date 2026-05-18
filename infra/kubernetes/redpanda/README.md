@@ -1,6 +1,6 @@
 # Redpanda Kafka-Compatible Backbone
 
-Cascade Phase 2.2 uses Redpanda as the local kind broker for the Kafka-compatible event backbone. The application code still uses `aiokafka`, the same topic names, and the same `KAFKA_BOOTSTRAP_SERVERS` environment variable.
+Cascade legacy Redpanda recovery uses Redpanda as the local kind broker for the Kafka-compatible event backbone. The application code still uses `aiokafka`, the same topic names, and the same `KAFKA_BOOTSTRAP_SERVERS` environment variable.
 
 Redpanda is Kafka API-compatible, so `observation-service` publishes `telemetry.raw` and `stream-enricher` consumes and republishes `telemetry.enriched` without code changes.
 
@@ -11,11 +11,11 @@ We switched away from a hand-rolled Apache Kafka deployment only for local devel
 From the repo root:
 
 ```powershell
-.\scripts\deploy-phase-2.ps1
-.\scripts\accept-phase-2.ps1
+.\scripts\deploy-telemetry.ps1
+.\scripts\accept-telemetry.ps1
 ```
 
-If the kind cluster was recreated, `deploy-phase-2.ps1` rebuilds and `kind load`s the Phase 2 service images before applying the deployments.
+If the kind cluster was recreated, `deploy-telemetry.ps1` rebuilds and `kind load`s the Telemetry pipeline service images before applying the deployments.
 
 ## Verify
 

@@ -26,8 +26,8 @@ From the repository root:
 ```powershell
 cd C:\Cascade
 
-.\scripts\deploy-phase-9.ps1
-.\scripts\accept-phase-9.ps1
+.\scripts\deploy.ps1
+.\scripts\accept.ps1
 ```
 
 Open the Command Center:
@@ -53,7 +53,7 @@ The goal is not autonomous production control. The goal is safer operator assist
 Cascade currently runs as a local kind-based MVP/demo platform.
 
 - The Command Center UI is available locally after deployment.
-- Phase 2 through Phase 9 acceptance scripts validate the current local system.
+- Acceptance scripts validate the current local system end to end.
 - Dangerous real execution is disabled by default.
 - Chaos and remediation workflows support planning, approval records, and dry-run validation.
 - The system is not production-hardened SaaS. Production use would require additional authentication, authorization, ingress/TLS, network policy, durable storage, backup/restore drills, observability hardening, and operational SLOs.
@@ -95,7 +95,7 @@ Core storage and event backbone:
 - Online Boutique services run in `cascade-targets`.
 - Cascade observes this workload as the local demo application.
 
-### Telemetry and Streaming
+### Telemetry Pipeline
 
 - `observation-service`: collects workload telemetry from Prometheus.
 - `stream-enricher`: normalizes and enriches telemetry events.
@@ -108,28 +108,34 @@ Core storage and event backbone:
 - `telemetry-archiver`: persists streamed telemetry and related records.
 - `memory-indexer`: indexes records into semantic memory.
 
-### Detection and Knowledge
+### Anomaly Detection
 
 - `feature-extractor-service`: builds telemetry feature windows.
 - `anomaly-detector-service`: scores feature windows and records anomaly events.
+
+### Knowledge and RAG
+
 - `knowledge-ingestion-service`: ingests repository knowledge into searchable chunks.
 - `knowledge-retrieval-service`: returns source-grounded context and evidence.
 - `retrieval-service`: provides query APIs over stored telemetry, incidents, anomalies, knowledge stats, and related records.
 
-### Agent Runtime
+### Agent Investigations
 
 - `agent-tool-gateway`: exposes safe, read-only tools for investigation workflows.
 - `agent-orchestrator-service`: runs deterministic investigation flows and records evidence.
 
-### Chaos and Remediation
+### Chaos Engineering
 
 - `chaos-planner-service`: creates safety-checked chaos plans.
 - `chaos-executor-service`: supports dry-run chaos execution and blocks real execution by default.
+
+### Remediation
+
 - `remediation-recommender-service`: creates remediation plans from incidents, investigations, or manual objectives.
 - `approval-service`: records human approval and rejection decisions.
 - `remediation-executor-service`: supports dry-run validation and blocks real execution by default.
 
-### UI
+### Command Center UI
 
 - `command-center`: React/Vite frontend served by nginx.
 - `command-center-api`: FastAPI proxy/BFF that exposes the platform APIs to the UI and enforces safety boundaries.
@@ -206,12 +212,12 @@ The local Vite dev server is useful for frontend iteration. The Kubernetes-hoste
 
 ## Validation
 
-Run targeted Phase 9 validation:
+Run targeted Command Center UI validation:
 
 ```powershell
 cd C:\Cascade
 
-.\scripts\accept-phase-9.ps1
+.\scripts\accept.ps1
 ```
 
 Run the broader local acceptance suite:
@@ -230,8 +236,8 @@ Useful focused checks:
 
 ```powershell
 .\scripts\audit-secrets.ps1
-.\scripts\accept-phase-7.ps1 -DryRunOnly
-.\scripts\demo-phase-9.ps1 -NoBrowser
+.\scripts\accept-chaos.ps1 -DryRunOnly
+.\scripts\demo.ps1 -NoBrowser
 .\scripts\debug-all.ps1
 ```
 
@@ -256,27 +262,27 @@ Do not commit secrets, tokens, kubeconfigs, database credentials, private keys, 
 Deployment:
 
 ```powershell
-.\scripts\deploy-phase-9.ps1
+.\scripts\deploy.ps1
 ```
 
 Acceptance:
 
 ```powershell
-.\scripts\accept-phase-9.ps1
+.\scripts\accept.ps1
 .\scripts\accept-all.ps1
 ```
 
 Debugging:
 
 ```powershell
-.\scripts\debug-phase-9.ps1
+.\scripts\debug.ps1
 .\scripts\debug-all.ps1
 ```
 
 Demo:
 
 ```powershell
-.\scripts\demo-phase-9.ps1 -NoBrowser
+.\scripts\demo.ps1 -NoBrowser
 ```
 
 Secret hygiene:

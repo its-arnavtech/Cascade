@@ -55,7 +55,7 @@ Save-Command "clickhouse-counts.txt" {
 Save-Command "qdrant-collections.txt" {
     kubectl -n $Namespace run debug-all-qdrant --rm -i --restart=Never --image=curlimages/curl:8.10.1 --image-pull-policy=IfNotPresent --command -- sh -c "curl -fsS http://qdrant:6333/collections; echo; curl -fsS http://qdrant:6333/collections/cascade_incident_memory; echo; curl -fsS http://qdrant:6333/collections/cascade_knowledge_base; echo"
 }
-Save-Command "phase9-command-center.txt" { kubectl -n $Namespace get deploy,svc,endpoints,pods | Select-String command-center }
+Save-Command "command-center.txt" { kubectl -n $Namespace get deploy,svc,endpoints,pods | Select-String command-center }
 
 $services = @{
     "observation-service" = 8000

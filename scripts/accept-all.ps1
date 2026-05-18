@@ -1,6 +1,6 @@
 param(
     [switch]$ContinueOnFailure,
-    [switch]$SkipPhase9
+    [switch]$SkipCommandCenter
 )
 
 $ErrorActionPreference = "Continue"
@@ -9,16 +9,16 @@ $outputDir = Join-Path "run-output" "accept-all-$timestamp"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 $phases = @(
-    @{ Name = "Phase 2"; Script = ".\scripts\accept-phase-2.ps1"; Args = @() },
-    @{ Name = "Phase 3"; Script = ".\scripts\accept-phase-3.ps1"; Args = @() },
-    @{ Name = "Phase 4"; Script = ".\scripts\accept-phase-4.ps1"; Args = @() },
-    @{ Name = "Phase 5"; Script = ".\scripts\accept-phase-5.ps1"; Args = @() },
-    @{ Name = "Phase 6"; Script = ".\scripts\accept-phase-6.ps1"; Args = @() },
-    @{ Name = "Phase 7"; Script = ".\scripts\accept-phase-7.ps1"; Args = @("-DryRunOnly") },
-    @{ Name = "Phase 8"; Script = ".\scripts\accept-phase-8.ps1"; Args = @() }
+    @{ Name = "Telemetry pipeline"; Script = ".\scripts\accept-telemetry.ps1"; Args = @() },
+    @{ Name = "Storage and memory"; Script = ".\scripts\accept-storage-memory.ps1"; Args = @() },
+    @{ Name = "Anomaly detection"; Script = ".\scripts\accept-anomaly-detection.ps1"; Args = @() },
+    @{ Name = "Knowledge and RAG"; Script = ".\scripts\accept-knowledge-rag.ps1"; Args = @() },
+    @{ Name = "Agent investigations"; Script = ".\scripts\accept-agents.ps1"; Args = @() },
+    @{ Name = "Chaos engineering"; Script = ".\scripts\accept-chaos.ps1"; Args = @("-DryRunOnly") },
+    @{ Name = "Remediation"; Script = ".\scripts\accept-remediation.ps1"; Args = @() }
 )
-if (-not $SkipPhase9) {
-    $phases += @{ Name = "Phase 9"; Script = ".\scripts\accept-phase-9.ps1"; Args = @() }
+if (-not $SkipCommandCenter) {
+    $phases += @{ Name = "Command Center UI"; Script = ".\scripts\accept.ps1"; Args = @() }
 }
 
 $results = New-Object System.Collections.Generic.List[object]
@@ -30,13 +30,13 @@ foreach ($phase in $phases) {
     Write-Host "Running $($phase.Name)"
     Write-Host "============================================================"
     switch ($phase.Name) {
-        "Phase 7" { & ".\scripts\accept-phase-7.ps1" -DryRunOnly *>&1 | Tee-Object -FilePath $logPath }
+        "Chaos engineering" { & ".\scripts\accept-chaos.ps1" -DryRunOnly *>&1 | Tee-Object -FilePath $logPath }
         default { & $phase.Script *>&1 | Tee-Object -FilePath $logPath }
     }
     $exitCode = $LASTEXITCODE
     $status = if ($exitCode -eq 0) { "PASS" } else { "FAIL" }
     $results.Add([pscustomobject]@{
-        Phase = $phase.Name
+        Area = $phase.Name
         Status = $status
         ExitCode = $exitCode
         Log = $logPath

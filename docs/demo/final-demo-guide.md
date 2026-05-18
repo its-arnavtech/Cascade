@@ -12,8 +12,8 @@
 ## Deploy And Validate
 
 ```powershell
-.\scripts\deploy-phase-9.ps1
-.\scripts\accept-phase-9.ps1
+.\scripts\deploy.ps1
+.\scripts\accept.ps1
 .\scripts\accept-all.ps1
 ```
 
@@ -35,12 +35,12 @@ kubectl port-forward -n cascade-system svc/qdrant 16333:6333
 kubectl port-forward -n cascade-system svc/retrieval-service 18012:8012
 ```
 
-If Prometheus, Grafana, or Online Boutique are installed in your local Phase 1 environment, forward them using their existing services in the cluster.
+If Prometheus, Grafana, or Online Boutique are installed in your local Observability foundation environment, forward them using their existing services in the cluster.
 
 ## Recommended Flow
 
 1. Show the Online Boutique target workload running in `cascade-targets`.
-2. Show Prometheus/Grafana metrics if those Phase 1 observability services are running.
+2. Show Prometheus/Grafana metrics if those Observability foundation observability services are running.
 3. Open Command Center overview and telemetry pages.
 4. Show anomaly data and retrieval counts.
 5. Search knowledge/runbook content.
@@ -51,10 +51,10 @@ If Prometheus, Grafana, or Online Boutique are installed in your local Phase 1 e
 
 ## Troubleshooting
 
-- Missing Command Center endpoints: rerun `.\scripts\deploy-phase-9.ps1`.
+- Missing Command Center endpoints: rerun `.\scripts\deploy.ps1`.
 - Redpanda topic mismatch: run `.\scripts\ensure-redpanda-topics.ps1`.
-- Too much demo data: use latest-state queries or reset phase state with the relevant `reset-phase-*.ps1` script.
-- Unknown UI API error: run `.\scripts\debug-phase-9.ps1` or `.\scripts\debug-all.ps1`.
+- Too much demo data: use latest-state queries or reset component state with the relevant `reset-*.ps1` helper.
+- Unknown UI API error: run `.\scripts\debug.ps1` or `.\scripts\debug-all.ps1`.
 
 ## Known Limits
 

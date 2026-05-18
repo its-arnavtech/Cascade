@@ -1,10 +1,10 @@
 # Cascade Command Center
 
-React + TypeScript + Vite operator UI for Cascade Phase 9.
+React + TypeScript + Vite operator UI for Cascade Command Center UI.
 
 ## Local development
 
-Start the Phase 9 API proxy on port `8031`, then run:
+Start the Command Center UI API proxy on port `8031`, then run:
 
 ```powershell
 npm install

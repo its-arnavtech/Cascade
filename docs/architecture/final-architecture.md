@@ -6,18 +6,18 @@ Cascade is a Kubernetes-native AI reliability platform for local incident intell
 
 Target workload telemetry flows from Prometheus and Kubernetes into Redpanda topics, is enriched and archived into ClickHouse, indexed into Qdrant, and surfaced through retrieval services, agents, and the Command Center.
 
-## Phase Map
+## Component Map
 
-- Phase 1: Kubernetes, target workload, and observability foundation.
-- Phase 2: telemetry ingestion, Redpanda event backbone, topology, causal reconstruction, and incident timeline.
-- Phase 3: ClickHouse analytical storage and Qdrant incident memory.
-- Phase 4: feature extraction and anomaly detection.
-- Phase 5: knowledge ingestion and RAG retrieval over runbooks and operational records.
-- Phase 6: deterministic agent investigation runtime and read-only tool gateway.
-- Phase 7: chaos planning and dry-run execution with safety boundaries.
-- Phase 8: remediation recommendation, approval records, and dry-run executor.
-- Phase 9: Command Center UI and browser-facing API proxy.
-- Phase 10: hardening scripts, backups, secret hygiene, rate limiting, final docs, and acceptance aggregation.
+- Observability foundation: Kubernetes, target workload, and observability foundation.
+- Telemetry pipeline: telemetry ingestion, Redpanda event backbone, topology, causal reconstruction, and incident timeline.
+- Storage and memory: ClickHouse analytical storage and Qdrant incident memory.
+- Anomaly detection: feature extraction and anomaly detection.
+- Knowledge and RAG: knowledge ingestion and RAG retrieval over runbooks and operational records.
+- Agent investigations: deterministic agent investigation runtime and read-only tool gateway.
+- Chaos engineering: chaos planning and dry-run execution with safety boundaries.
+- Remediation: remediation recommendation, approval records, and dry-run executor.
+- Command Center UI: Command Center UI and browser-facing API proxy.
+- Hardening: hardening scripts, backups, secret hygiene, rate limiting, final docs, and acceptance aggregation.
 
 ## Service Map
 
@@ -71,7 +71,7 @@ Qdrant collections:
 - Command Center API allows only GET and selected safe POST routes.
 - Real remediation execution is blocked by default.
 - Real chaos execution is blocked through the UI path by default.
-- Phase 7 normal validation uses `-DryRunOnly`.
+- Chaos engineering normal validation uses `-DryRunOnly`.
 - Rate limiting is local in-memory protection on `command-center-api`.
 
 ## Local vs Production

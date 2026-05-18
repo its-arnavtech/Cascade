@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: NetworkChaos
 metadata:
-  name: cascade-phase7-network-delay-template
+  name: cascade-chaos-network-delay-template
   namespace: cascade-targets
   labels:
     app.kubernetes.io/part-of: cascade

@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: PodChaos
 metadata:
-  name: cascade-phase7-pod-kill-template
+  name: cascade-chaos-pod-kill-template
   namespace: cascade-targets
   labels:
     app.kubernetes.io/part-of: cascade

@@ -52,22 +52,22 @@ sum by (pod) (kube_pod_container_status_restarts_total{namespace="cascade-target
 Run the normal phase acceptance checks after target deployment:
 
 ```powershell
-.\scripts\accept-phase-2.ps1
-.\scripts\accept-phase-4.ps1
-.\scripts\accept-phase-7.ps1 -DryRunOnly
-.\scripts\accept-phase-8.ps1
-.\scripts\accept-phase-9.ps1
+.\scripts\accept-telemetry.ps1
+.\scripts\accept-anomaly-detection.ps1
+.\scripts\accept-chaos.ps1 -DryRunOnly
+.\scripts\accept-remediation.ps1
+.\scripts\accept.ps1
 .\scripts\accept-all.ps1
 ```
 
-Phase 2 proves telemetry flow, Phase 4 proves anomaly detection, Phase 7 proves safe chaos dry-runs against the target, Phase 8 proves remediation planning and dry-run validation, and Phase 9 proves the Command Center path.
+Telemetry pipeline proves telemetry flow, Anomaly detection proves anomaly detection, Chaos engineering proves safe chaos dry-runs against the target, Remediation proves remediation planning and dry-run validation, and Command Center UI proves the Command Center path.
 
 ## Safe Chaos Dry-Run
 
 The normal demo target for chaos is `recommendationservice` in namespace `cascade-targets`. Keep demos in dry-run mode:
 
 ```powershell
-.\scripts\accept-phase-7.ps1 -DryRunOnly
+.\scripts\accept-chaos.ps1 -DryRunOnly
 ```
 
 The Command Center UI also exposes dry-run planning and dry-run execution only by default.

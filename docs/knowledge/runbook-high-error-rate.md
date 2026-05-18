@@ -19,4 +19,4 @@ Use this runbook when a service shows elevated error rate, warning rate, or unhe
 
 ## Notes
 
-Phase 5 retrieval returns evidence and citations only. It does not claim final root cause without retrieved support.
+Knowledge and RAG retrieval returns evidence and citations only. It does not claim final root cause without retrieved support.

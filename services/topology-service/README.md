@@ -1,6 +1,6 @@
 # Topology Service
 
-Provides a static Online Boutique service dependency graph for Phase 2.
+Provides a static Online Boutique service dependency graph for Telemetry pipeline.
 
 ## Endpoints
 

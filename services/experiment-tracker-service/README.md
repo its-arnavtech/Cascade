@@ -1,6 +1,6 @@
 # Experiment Tracker Service
 
-Tracks Phase 2 chaos experiment metadata in memory and publishes experiment lifecycle events to `experiments.events`.
+Tracks Telemetry pipeline chaos experiment metadata in memory and publishes experiment lifecycle events to `experiments.events`.
 
 ## Endpoints
 

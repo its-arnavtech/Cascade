@@ -1,6 +1,6 @@
 # Incident Timeline Service
 
-Generates deterministic Phase 2 incident timelines and Markdown/JSON reports from experiment, causal reconstruction, and topology impact data.
+Generates deterministic Telemetry pipeline incident timelines and Markdown/JSON reports from experiment, causal reconstruction, and topology impact data.
 
 ## Endpoints
 

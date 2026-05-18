@@ -1,6 +1,6 @@
 # Cascade Local Backup And Restore Runbook
 
-Cascade Phase 10 adds local helper scripts for ClickHouse and Qdrant backups. These are intended for the local kind environment and portfolio demos. They are not a substitute for production storage replication, tested offsite backups, or disaster recovery automation.
+Cascade Hardening adds local helper scripts for ClickHouse and Qdrant backups. These are intended for the local kind environment and portfolio demos. They are not a substitute for production storage replication, tested offsite backups, or disaster recovery automation.
 
 ## ClickHouse
 

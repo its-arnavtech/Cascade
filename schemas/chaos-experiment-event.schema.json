@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://cascade.local/schemas/chaos-experiment-event.schema.json",
-  "title": "Cascade Phase 7 Chaos Experiment Event",
+  "title": "Cascade Chaos engineering Chaos Experiment Event",
   "type": "object",
   "required": [
     "schema_version",

@@ -1,7 +1,7 @@
 apiVersion: chaos-mesh.org/v1alpha1
 kind: StressChaos
 metadata:
-  name: cascade-phase7-stress-cpu-template
+  name: cascade-chaos-stress-cpu-template
   namespace: cascade-targets
   labels:
     app.kubernetes.io/part-of: cascade

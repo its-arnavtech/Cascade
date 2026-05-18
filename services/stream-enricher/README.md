@@ -27,10 +27,10 @@ The stream enricher consumes `telemetry.raw`, applies simple rule-based enrichme
 
 ## Run Locally
 
-For current kind-based development, use Redpanda through `.\scripts\deploy-phase-2.ps1`. The old Docker Compose Apache Kafka setup remains available only as a legacy local compatibility path:
+For current kind-based development, use Redpanda through `.\scripts\deploy-telemetry.ps1`. The old Docker Compose Apache Kafka setup remains available only as a legacy local compatibility path:
 
 ```powershell
-docker compose -f infra/kafka/docker-compose.yaml up -d
+docker compose -f the legacy Kafka archive up -d
 ```
 
 Run the service:
