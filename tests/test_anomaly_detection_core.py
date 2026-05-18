@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import asyncio
 from datetime import UTC, datetime
 
 from services.shared.anomaly.ensemble import severity_for_risk
@@ -8,6 +9,22 @@ from services.shared.anomaly.isolation_forest import isolation_forest_detect
 from services.shared.anomaly.thresholds import threshold_detect
 from services.shared.anomaly.zscore import zscore_detect
 from services.shared.features.extraction import extract_feature_windows
+from services.shared.storage.clickhouse_client import ClickHouseClient
+
+
+class RecordingClickHouseClient(ClickHouseClient):
+    def __init__(self, existing_ids: set[str]) -> None:
+        super().__init__()
+        self.existing_ids = existing_ids
+        self.inserted_rows: list[dict] = []
+
+    async def existing_anomaly_ids(self, anomaly_ids: list[str]) -> set[str]:
+        return self.existing_ids.intersection(anomaly_ids)
+
+    async def insert_rows(self, table: str, rows):
+        materialized = list(rows)
+        self.inserted_rows.extend(materialized)
+        return len(materialized)
 
 
 class Phase4CoreTests(unittest.TestCase):
@@ -61,6 +78,17 @@ class Phase4CoreTests(unittest.TestCase):
         self.assertEqual(severity_for_risk(0.5), "medium")
         self.assertEqual(severity_for_risk(0.3), "low")
         self.assertEqual(severity_for_risk(0.1), "normal")
+
+    def test_anomaly_insert_skips_existing_stable_ids(self) -> None:
+        client = RecordingClickHouseClient({"anomaly-a"})
+        inserted = asyncio.run(client.insert_anomaly_events([
+            {"anomaly_id": "anomaly-a", "service": "catalogue"},
+            {"anomaly_id": "anomaly-b", "service": "catalogue"},
+            {"anomaly_id": "anomaly-b", "service": "catalogue"},
+        ]))
+
+        self.assertEqual(inserted, 1)
+        self.assertEqual(client.inserted_rows, [{"anomaly_id": "anomaly-b", "service": "catalogue"}])
 
 
 if __name__ == "__main__":

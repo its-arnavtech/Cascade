@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import unittest
+import asyncio
 from pathlib import Path
 
 from services.shared.chaos.events import chaos_event
 from services.shared.chaos.safety import default_policy, validate_plan
 from services.shared.chaos.scoring import compute_resilience_score, grade_for_score
 from services.shared.chaos.templates import build_manifest, stable_id
+from services.shared.storage.clickhouse_client import ClickHouseClient
+
+
+class RecordingClickHouseClient(ClickHouseClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.queries: list[str] = []
+
+    async def fetch_json_rows(self, query: str):
+        self.queries.append(query)
+        return []
 
 
 class Phase7CoreTests(unittest.TestCase):
@@ -79,6 +91,20 @@ class Phase7CoreTests(unittest.TestCase):
         self.assertNotIn("cluster-admin", text)
         self.assertNotIn("deployments", text)
         self.assertIn("podchaos", text)
+
+    def test_chaos_run_queries_select_latest_canonical_state(self) -> None:
+        client = RecordingClickHouseClient()
+        asyncio.run(client.recent_chaos_runs(limit=7, service="catalogue", status="completed"))
+        asyncio.run(client.chaos_run_detail("chaos_run_1"))
+
+        recent_query = client.queries[0]
+        detail_query = client.queries[1]
+        self.assertIn("row_number() OVER", recent_query)
+        self.assertIn("PARTITION BY run_id", recent_query)
+        self.assertIn("target_service = 'catalogue'", recent_query)
+        self.assertIn("status = 'completed'", recent_query)
+        self.assertIn("LIMIT 7", recent_query)
+        self.assertIn("run_id = 'chaos_run_1'", detail_query)
 
 
 if __name__ == "__main__":

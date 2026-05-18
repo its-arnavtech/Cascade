@@ -345,7 +345,7 @@ spec:
                   feature_vector_json String,
                   related_experiment_id String,
                   published_to_redpanda UInt8
-              ) ENGINE = MergeTree ORDER BY (service, detected_at, anomaly_id);
+              ) ENGINE = ReplacingMergeTree(detected_at) ORDER BY (anomaly_id);
               CREATE TABLE IF NOT EXISTS cascade.causal_reports (
                   report_id String,
                   generated_at DateTime64(3),
@@ -817,18 +817,24 @@ spec:
               until curl -sf http://qdrant:6333/readyz; do sleep 3; done
               code="$(curl -s -o /tmp/qdrant-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_incident_memory \
                 -H 'Content-Type: application/json' \
-                --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
+                --data '{"vectors":{"size":128,"distance":"Cosine"},"optimizers_config":{"indexing_threshold":1000}}')"
               if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
                 cat /tmp/qdrant-init-response
               else
                 cat /tmp/qdrant-init-response
                 exit 1
               fi
+              curl -sf -X PATCH http://qdrant:6333/collections/cascade_incident_memory \
+                -H 'Content-Type: application/json' \
+                --data '{"optimizers_config":{"indexing_threshold":1000}}'
               code="$(curl -s -o /tmp/qdrant-knowledge-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_knowledge_base \
                 -H 'Content-Type: application/json' \
-                --data '{"vectors":{"size":128,"distance":"Cosine"}}')"
+                --data '{"vectors":{"size":128,"distance":"Cosine"},"optimizers_config":{"indexing_threshold":1000}}')"
               if [ "$code" = "200" ] || [ "$code" = "201" ] || [ "$code" = "409" ]; then
                 cat /tmp/qdrant-knowledge-init-response
+                curl -sf -X PATCH http://qdrant:6333/collections/cascade_knowledge_base \
+                  -H 'Content-Type: application/json' \
+                  --data '{"optimizers_config":{"indexing_threshold":1000}}'
                 exit 0
               fi
               cat /tmp/qdrant-knowledge-init-response

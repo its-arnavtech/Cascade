@@ -29,6 +29,12 @@ class DependenciesResponse(BaseModel):
     dependencies: list[str]
 
 
+class DirectionalServicesResponse(BaseModel):
+    service_name: str
+    upstream: list[str] | None = None
+    downstream: list[str] | None = None
+
+
 class BlastRadiusRequest(BaseModel):
     root_service: str
     hops: int = 3

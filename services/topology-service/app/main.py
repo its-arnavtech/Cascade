@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Query
 
-from app.models import BlastRadiusRequest, CriticalPathsRequest, DependenciesResponse, HealthResponse, ImpactRequest, ImpactResponse, TopologyResponse
+from app.models import BlastRadiusRequest, CriticalPathsRequest, DependenciesResponse, DirectionalServicesResponse, HealthResponse, ImpactRequest, ImpactResponse, TopologyResponse
 from app.topology import DEPENDENCIES, blast_radius, critical_paths, dependencies, downstream, graph_payload, impact, upstream
 from services.shared.targets.catalog import ACTIVE_TARGET
 
@@ -45,14 +45,14 @@ async def target_workload() -> dict:
     }
 
 
-@app.get("/topology/{service_name}/downstream")
-async def downstream_services(service_name: str) -> dict[str, list[str]]:
-    return {"service_name": service_name, "downstream": downstream(service_name)}
+@app.get("/topology/{service_name}/downstream", response_model=DirectionalServicesResponse)
+async def downstream_services(service_name: str) -> DirectionalServicesResponse:
+    return DirectionalServicesResponse(service_name=service_name, downstream=downstream(service_name))
 
 
-@app.get("/topology/{service_name}/upstream")
-async def upstream_services(service_name: str) -> dict[str, list[str]]:
-    return {"service_name": service_name, "upstream": upstream(service_name)}
+@app.get("/topology/{service_name}/upstream", response_model=DirectionalServicesResponse)
+async def upstream_services(service_name: str) -> DirectionalServicesResponse:
+    return DirectionalServicesResponse(service_name=service_name, upstream=upstream(service_name))
 
 
 @app.get("/topology/{service_name}/dependencies", response_model=DependenciesResponse)

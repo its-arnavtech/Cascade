@@ -143,7 +143,7 @@ spec:
                   feature_vector_json String,
                   related_experiment_id String,
                   published_to_redpanda UInt8
-              ) ENGINE = MergeTree ORDER BY (service, detected_at, anomaly_id);
+              ) ENGINE = ReplacingMergeTree(detected_at) ORDER BY (anomaly_id);
               CREATE TABLE IF NOT EXISTS cascade.causal_reports (
                   report_id String,
                   generated_at DateTime64(3),
