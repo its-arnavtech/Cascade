@@ -122,7 +122,7 @@ async def detect(payload: DetectRequest | None = None) -> dict[str, Any]:
                 anomaly["published_to_redpanda"] = 1
                 published += 1
             anomalies.append(anomaly)
-    inserted = await clickhouse.insert_rows("anomaly_events", anomalies)
+    inserted = await clickhouse.insert_anomaly_events(anomalies)
     await record_model_run(started, len(rows), inserted, "ok", "")
     last_detection.update({"windows_scored": len(rows), "anomalies_detected": inserted, "published_count": published, "last_error": ""})
     return {

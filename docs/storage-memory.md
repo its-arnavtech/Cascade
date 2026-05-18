@@ -41,7 +41,10 @@ Collection: `cascade_incident_memory`
 
 - Vector size: `128`
 - Distance: `Cosine`
+- Local demo indexing threshold: `1000`
 - Payload fields include `memory_id`, `memory_type`, `event_id`, `incident_id`, `experiment_id`, `service`, `namespace`, `workload`, `severity`, `health_status`, `event_type`, `root_cause_service`, `observed_at`, `generated_at`, `summary`, `source`, `source_topic`, `tags`, and `compact_json`.
+
+The Qdrant init job configures `optimizers_config.indexing_threshold=1000` for `cascade_incident_memory` and `cascade_knowledge_base`. That keeps local demo collections from sitting below Qdrant's higher default threshold for a long time; search remains valid either way, but small demo datasets build vector indexes earlier.
 
 Memory types:
 

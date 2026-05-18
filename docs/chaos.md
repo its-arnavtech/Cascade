@@ -134,6 +134,8 @@ Chaos engineering adds:
 - `resilience_scores`
 - `chaos_safety_violations`
 
+`chaos_experiment_runs` stores lifecycle state transitions. The run APIs return the latest canonical row per `run_id` by default, so `/runs` shows one current state per run and `/runs/{run_id}` resolves completed or failed terminal state after cleanup.
+
 ## Redpanda Topic
 
 Chaos engineering adds `chaos.experiments`.

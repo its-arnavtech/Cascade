@@ -45,6 +45,12 @@ class Phase3CoreTests(unittest.TestCase):
         self.assertEqual(payload["memory_type"], "telemetry_event")
         self.assertEqual(payload["event_id"], "evt-1")
 
+    def test_qdrant_init_uses_local_demo_indexing_threshold(self) -> None:
+        manifest = open("infra/kubernetes/qdrant/collection-job.yaml", encoding="utf-8").read()
+        self.assertIn('"optimizers_config":{"indexing_threshold":1000}', manifest)
+        self.assertIn("PATCH http://qdrant:6333/collections/cascade_incident_memory", manifest)
+        self.assertIn("PATCH http://qdrant:6333/collections/cascade_knowledge_base", manifest)
+
 
 if __name__ == "__main__":
     unittest.main()

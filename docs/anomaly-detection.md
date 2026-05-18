@@ -52,6 +52,8 @@ Anomaly detection adds:
 
 The existing ClickHouse schema job creates these idempotently.
 
+`anomaly_id` is stable for a feature window and detector evidence. Before inserting new anomaly rows, the detector checks existing IDs and skips already-persisted IDs, including duplicates inside the same detection batch. Re-running synthetic demo detection for the same labeled feature window should therefore publish only genuinely new anomaly IDs instead of inflating `anomaly_events` with repeated copies.
+
 ## Model Design
 
 ### Threshold Detector
@@ -112,6 +114,7 @@ New retrieval-service endpoints:
 - anomaly persistence
 - anomaly event publication
 - retrieval-service feature and anomaly APIs
+- repeated runs do not insert duplicate rows for already-seen stable anomaly IDs
 
 ## Troubleshooting
 

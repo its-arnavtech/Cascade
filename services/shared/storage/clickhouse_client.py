@@ -79,6 +79,21 @@ class ClickHouseClient:
         logger.info("Inserted ClickHouse rows table=%s count=%s", table, len(materialized))
         return len(materialized)
 
+    async def insert_anomaly_events(self, rows: Iterable[dict[str, Any]]) -> int:
+        materialized = list(rows)
+        if not materialized:
+            return 0
+        existing = await self.existing_anomaly_ids([str(row.get("anomaly_id") or "") for row in materialized])
+        seen = set(existing)
+        new_rows = []
+        for row in materialized:
+            anomaly_id = str(row.get("anomaly_id") or "")
+            if not anomaly_id or anomaly_id in seen:
+                continue
+            seen.add(anomaly_id)
+            new_rows.append(row)
+        return await self.insert_rows("anomaly_events", new_rows)
+
     async def recent_telemetry(self, limit: int = 20, service: str | None = None, namespace: str | None = None, event_type: str | None = None) -> list[dict[str, Any]]:
         where = self._where({"service": service, "namespace": namespace, "event_type": event_type})
         return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.telemetry_events {where} ORDER BY observed_at DESC LIMIT {self._limit(limit)}")
@@ -120,6 +135,14 @@ class ClickHouseClient:
         safe = self._quote(anomaly_id)
         rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.anomaly_events WHERE anomaly_id = {safe} ORDER BY detected_at DESC LIMIT 1")
         return rows[0] if rows else None
+
+    async def existing_anomaly_ids(self, anomaly_ids: list[str]) -> set[str]:
+        cleaned = sorted({item for item in anomaly_ids if item})
+        if not cleaned:
+            return set()
+        values = ", ".join(self._quote(item) for item in cleaned)
+        rows = await self.fetch_json_rows(f"SELECT DISTINCT anomaly_id FROM {self.settings.clickhouse_database}.anomaly_events WHERE anomaly_id IN ({values})")
+        return {str(row["anomaly_id"]) for row in rows}
 
     async def insert_causal_report(self, report: dict[str, Any]) -> int:
         report_row = {
@@ -302,12 +325,11 @@ class ClickHouseClient:
         return rows[0] if rows else None
 
     async def recent_chaos_runs(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
-        where = self._where({"target_service": service, "status": status})
-        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_runs {where} ORDER BY started_at DESC LIMIT {self._limit(limit)}")
+        return await self.fetch_json_rows(f"{self._latest_chaos_runs_query({'target_service': service, 'status': status})} ORDER BY latest_state_at DESC LIMIT {self._limit(limit)}")
 
     async def chaos_run_detail(self, run_id: str) -> dict[str, Any]:
         safe = self._quote(run_id)
-        runs = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_runs WHERE run_id = {safe} ORDER BY started_at DESC LIMIT 1")
+        runs = await self.fetch_json_rows(f"{self._latest_chaos_runs_query({'run_id': run_id})} LIMIT 1")
         observations = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_observations WHERE run_id = {safe} ORDER BY observed_at DESC LIMIT 1")
         scores = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.resilience_scores WHERE run_id = {safe} ORDER BY computed_at DESC LIMIT 1")
         return {"run": runs[0] if runs else None, "observation": observations[0] if observations else None, "score": scores[0] if scores else None}
@@ -427,6 +449,48 @@ class ClickHouseClient:
     def _where(self, filters: dict[str, str | None]) -> str:
         clauses = [f"{key} = {self._quote(value)}" for key, value in filters.items() if value]
         return "WHERE " + " AND ".join(clauses) if clauses else ""
+
+    def _latest_chaos_runs_query(self, filters: dict[str, str | None] | None = None) -> str:
+        db = self.settings.clickhouse_database
+        clauses = ["rn = 1"]
+        if filters:
+            clauses.extend(f"{key} = {self._quote(value)}" for key, value in filters.items() if value)
+        where = " AND ".join(clauses)
+        return f"""
+SELECT
+    run_id,
+    plan_id,
+    experiment_id,
+    started_at,
+    completed_at,
+    status,
+    dry_run,
+    approved,
+    experiment_kind,
+    target_namespace,
+    target_service,
+    target_workload,
+    chaos_resource_name,
+    chaos_resource_uid,
+    duration_seconds,
+    cleanup_status,
+    error_message,
+    run_json,
+    latest_state_at
+FROM (
+    SELECT
+        *,
+        ifNull(completed_at, started_at) AS latest_state_at,
+        row_number() OVER (
+            PARTITION BY run_id
+            ORDER BY
+                ifNull(completed_at, started_at) DESC,
+                multiIf(status = 'completed', 5, status = 'failed', 4, status = 'dry_run', 3, status = 'running', 2, 1) DESC
+        ) AS rn
+    FROM {db}.chaos_experiment_runs
+)
+WHERE {where}
+"""
 
 
 def schema_statements(database: str = "cascade") -> list[str]:
@@ -569,8 +633,8 @@ CREATE TABLE IF NOT EXISTS {db}.anomaly_events (
     feature_vector_json String,
     related_experiment_id String,
     published_to_redpanda UInt8
-) ENGINE = MergeTree
-ORDER BY (service, detected_at, anomaly_id)
+) ENGINE = ReplacingMergeTree(detected_at)
+ORDER BY (anomaly_id)
 """,
         f"""
 CREATE TABLE IF NOT EXISTS {db}.causal_reports (
