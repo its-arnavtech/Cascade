@@ -2,7 +2,7 @@
 
 Chaos engineering lets Cascade safely plan, execute, observe, and score controlled Chaos Mesh experiments against the Sock Shop target namespace.
 
-Chaos engineering executes controlled chaos only. It does not execute remediation, patch application deployments, scale workloads, run autonomous agent-triggered chaos, or provide a UI.
+Chaos engineering is dry-run by default. Real Chaos Mesh execution is available only through the opt-in local demo script and requires live-demo flags, local kind context validation, approval, and a prior successful dry-run.
 
 ## Architecture
 
@@ -78,6 +78,7 @@ Safety checks reject:
 - unsupported experiment kinds
 - durations above the configured maximum
 - real execution without `approved=true`
+- real execution without live-demo flags, local kind context, non-expired approval, and prior successful dry-run
 - manifests missing Cascade cleanup labels
 
 The executor ServiceAccount can get/list/watch pods and services in `cascade-targets` and create/get/list/watch/delete Chaos Mesh resources in `cascade-targets`. It cannot mutate deployments, services, configmaps, secrets, or system namespaces.
@@ -180,6 +181,16 @@ Demo:
 .\scripts\demo-chaos.ps1 -TargetService catalogue -ObservationWindowSeconds 60
 ```
 
+Opt-in local live demo:
+
+```powershell
+.\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
+.\scripts\verify-chaos-mesh.ps1
+.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+```
+
+The live demo performs a bounded one-pod `PodChaos` against an allowlisted Sock Shop service, `catalogue` by default, for 10-30 seconds. It temporarily enables `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_CHAOS=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the chaos executor, then prints cleanup and disable commands. It does not target `cascade-system`, databases, brokers, session stores, or wildcard selectors.
+
 Debug:
 
 ```powershell
@@ -196,10 +207,10 @@ Use `-ClearChaosTables` only when intentionally clearing local Chaos engineering
 
 ## Known Limitations
 
-- Chaos engineering executes controlled chaos only.
+- Real execution is scripts-only local demo mode and remains disabled by default.
 - No remediation execution.
 - No autonomous agent-triggered chaos by default.
-- No UI.
+- No browser-based real execution path.
 - Network and stress experiments are local-limited and optional.
 - Resilience scores are baseline heuristics.
 - Dry-run mode is available for safe validation.

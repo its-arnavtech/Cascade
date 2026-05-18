@@ -36,6 +36,20 @@ spec:
               value: remediation.actions
             - name: EXECUTION_ENABLED
               value: "false"
+            - name: ENABLE_DANGEROUS_ACTIONS
+              value: "false"
+            - name: ENABLE_REAL_REMEDIATION
+              value: "false"
+            - name: CASCADE_LIVE_DEMO_MODE
+              value: "false"
+            - name: CASCADE_ALLOWED_CLUSTER_CONTEXT
+              value: kind-cascade
+            - name: CASCADE_ALLOWED_TARGET_NAMESPACE
+              value: cascade-targets
+            - name: CASCADE_REQUIRE_APPROVAL
+              value: "true"
+            - name: CASCADE_REQUIRE_DRY_RUN_FIRST
+              value: "true"
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:

@@ -19,6 +19,8 @@ from services.shared.chaos.schemas import ChaosRunRequest
 from services.shared.chaos.scoring import compute_resilience_score
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
+from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
+from services.shared.remediation.approval import is_approval_current
 from services.shared.storage.clickhouse_client import ClickHouseClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -34,6 +36,14 @@ class Settings(BaseSettings):
     chaos_events_topic: str = "chaos.experiments"
     chaos_publish_events: bool = True
     request_timeout_seconds: float = 20.0
+    enable_dangerous_actions: bool = False
+    enable_real_chaos: bool = False
+    cascade_live_demo_mode: bool = False
+    cascade_allowed_cluster_context: str = "kind-cascade"
+    cascade_active_cluster_context: str = ""
+    cascade_allowed_target_namespace: str = "cascade-targets"
+    cascade_require_approval: bool = True
+    cascade_require_dry_run_first: bool = True
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
@@ -66,7 +76,7 @@ async def shutdown() -> None:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "chaos-executor-service"}
+    return {"status": "ok", "service": "chaos-executor-service", **_live_status()}
 
 
 @app.get("/ready")
@@ -74,7 +84,7 @@ async def ready() -> dict[str, Any]:
     ch = await clickhouse.ping()
     kube = bool(k8s and k8s.ready())
     chaos = bool(k8s and k8s.chaos_crds_ready())
-    response = {"status": "ok" if ch and kube and chaos else "degraded", "service": "chaos-executor-service", "clickhouse": ch, "kubernetes": kube, "chaos_mesh_crds": chaos, "event_publishing": settings.chaos_publish_events}
+    response = {"status": "ok" if ch and kube and chaos else "degraded", "service": "chaos-executor-service", "clickhouse": ch, "kubernetes": kube, "chaos_mesh_crds": chaos, "event_publishing": settings.chaos_publish_events, **_live_status()}
     if response["status"] != "ok":
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=response)
     return response
@@ -84,6 +94,7 @@ async def ready() -> dict[str, Any]:
 async def safety_policy() -> dict[str, Any]:
     policy = default_policy()
     data = policy.model_dump()
+    data.update(_live_status())
     data["denied"] = {"namespaces": policy.denied_namespaces, "services": policy.denied_services, "resource_kinds": policy.denied_resource_kinds}
     data["protected"] = {"services": policy.protected_services}
     return data
@@ -92,7 +103,9 @@ async def safety_policy() -> dict[str, Any]:
 @app.post("/runs")
 async def start_run(payload: ChaosRunRequest) -> dict[str, Any]:
     plan = await _load_plan(payload.plan_id)
-    safety = validate_plan(plan, default_policy(), approved=payload.approved, dry_run=payload.dry_run)
+    approval = await _load_approval(payload.approval_id, plan["plan_id"])
+    approval_current = is_approval_current(approval)
+    safety = validate_plan(plan, default_policy(), approved=payload.approved or approval_current, dry_run=payload.dry_run)
     await _audit(plan, safety)
     if not safety.allowed:
         await _insert_violation(plan["plan_id"], "", "execution_rejected", "high", "; ".join(safety.violations), payload.model_dump())
@@ -110,6 +123,24 @@ async def start_run(payload: ChaosRunRequest) -> dict[str, Any]:
 
     if k8s is None:
         raise HTTPException(status_code=503, detail="Kubernetes client unavailable")
+
+    dry_run_passed = await _dry_run_passed(plan["plan_id"])
+    live_violations = validate_live_demo_gate(
+        action="ENABLE_REAL_CHAOS",
+        namespace=plan["target_namespace"],
+        service=plan["target_service"],
+        config=_live_config(),
+        feature_enabled=settings.enable_real_chaos,
+        approval_current=approval_current,
+        dry_run_passed=dry_run_passed,
+        current_context=k8s.current_context(),
+    )
+    if live_violations:
+        execution = _run_dict(run_id, plan, payload, "rejected", "not_required", "; ".join(live_violations))
+        await _insert_run(execution)
+        await _insert_violation(plan["plan_id"], run_id, "live_demo_gate_rejected", "high", "; ".join(live_violations), payload.model_dump())
+        await _publish("chaos.run.failed", plan, execution, None, "; ".join(live_violations))
+        raise HTTPException(status_code=400, detail={"status": "rejected", "violations": live_violations, "run_id": run_id})
 
     resource = None
     cleanup_status = "not_started"
@@ -206,6 +237,20 @@ async def _load_plan(plan_id: str) -> dict[str, Any]:
             response.raise_for_status()
             return response.json()["plan"] if "plan" in response.json() else response.json()
     return _decode_plan(row)["plan"]
+
+
+async def _load_approval(approval_id: str, plan_id: str) -> dict[str, Any] | None:
+    if not approval_id:
+        return None
+    approval = await clickhouse.remediation_approval(approval_id)
+    if not approval or approval.get("plan_id") != plan_id:
+        return None
+    return approval
+
+
+async def _dry_run_passed(plan_id: str) -> bool:
+    row = await clickhouse.latest_chaos_dry_run(plan_id)
+    return bool(row)
 
 
 def _run_dict(run_id: str, plan: dict[str, Any], payload: ChaosRunRequest, status_: str, cleanup: str, error: str) -> dict[str, Any]:
@@ -311,6 +356,33 @@ async def _publish(event_type: str, plan: dict[str, Any], run: dict[str, Any], s
         await producer.send(settings.chaos_events_topic, chaos_event(event_type, plan, run, score, summary), key=run.get("run_id") or plan.get("plan_id"))
     except Exception as exc:
         logger.warning("Failed to publish chaos event type=%s error=%s", event_type, exc)
+
+
+def _live_config() -> LiveDemoConfig:
+    return LiveDemoConfig(
+        enable_dangerous_actions=settings.enable_dangerous_actions,
+        enable_real_chaos=settings.enable_real_chaos,
+        enable_real_remediation=False,
+        cascade_live_demo_mode=settings.cascade_live_demo_mode,
+        cascade_allowed_cluster_context=settings.cascade_allowed_cluster_context,
+        cascade_active_cluster_context=settings.cascade_active_cluster_context,
+        cascade_allowed_target_namespace=settings.cascade_allowed_target_namespace,
+        cascade_require_approval=settings.cascade_require_approval,
+        cascade_require_dry_run_first=settings.cascade_require_dry_run_first,
+    )
+
+
+def _live_status() -> dict[str, Any]:
+    return {
+        "dangerous_actions_enabled": settings.enable_dangerous_actions,
+        "real_chaos_enabled": settings.enable_real_chaos,
+        "live_demo_mode": settings.cascade_live_demo_mode,
+        "allowed_cluster_context": settings.cascade_allowed_cluster_context,
+        "active_cluster_context": settings.cascade_active_cluster_context or (k8s.current_context() if k8s else ""),
+        "allowed_target_namespace": settings.cascade_allowed_target_namespace,
+        "approval_required": settings.cascade_require_approval,
+        "dry_run_first_required": settings.cascade_require_dry_run_first,
+    }
 
 
 def _decode_plan(row: dict[str, Any]) -> dict[str, Any]:

@@ -63,7 +63,7 @@ Cascade currently runs as a local kind-based MVP/demo platform.
 High-level flow:
 
 ```text
-Online Boutique target workload
+Sock Shop target workload
   -> observation-service / telemetry collection
   -> Redpanda topics
   -> stream enrichment and archival
@@ -79,7 +79,7 @@ Online Boutique target workload
 Primary namespaces:
 
 - `cascade-system`: Cascade platform services and data infrastructure.
-- `cascade-targets`: Online Boutique target workload.
+- `cascade-targets`: Sock Shop target workload.
 - `monitoring`: Prometheus stack used by observation services.
 
 Core storage and event backbone:
@@ -92,7 +92,7 @@ Core storage and event backbone:
 
 ### Target Workload
 
-- Online Boutique services run in `cascade-targets`.
+- Sock Shop services run in `cascade-targets`.
 - Cascade observes this workload as the local demo application.
 
 ### Telemetry Pipeline
@@ -256,6 +256,45 @@ Cascade is safety-first by default:
 - No arbitrary command execution should be exposed through the UI.
 
 Do not commit secrets, tokens, kubeconfigs, database credentials, private keys, generated `.env` files, or real API keys. `.env.example` is for placeholders only.
+
+## Testing Real Chaos And Remediation Locally
+
+Dry-run is the default. Real actions are available only through opt-in local demo scripts, not through normal deployment or the Command Center UI.
+
+Prerequisites:
+
+- local kind context `kind-cascade`
+- Sock Shop deployed in `cascade-targets`
+- Chaos Mesh installed for real chaos tests
+- explicit `-ConfirmLocalKind` on live demo scripts
+
+Setup and verification:
+
+```powershell
+.\scripts\deploy-targets.ps1
+.\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
+.\scripts\verify-chaos-mesh.ps1
+.\scripts\ensure-redpanda-topics.ps1
+```
+
+Run bounded, policy-gated live demos:
+
+```powershell
+.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+The scripts temporarily enable live-demo flags on the relevant executor and require approval records plus dry-run-first validation. They are scoped to `cascade-targets` and safe Sock Shop services such as `catalogue`; they intentionally block `cascade-system`, databases, brokers, session stores, wildcard selectors, namespace deletion, and deployment deletion.
+
+Disable live mode and clean up:
+
+```powershell
+kubectl -n cascade-targets delete podchaos,networkchaos,stresschaos -l cascade.io/phase=phase7 --ignore-not-found=true
+kubectl -n cascade-system set env deployment/chaos-executor-service ENABLE_DANGEROUS_ACTIONS=false ENABLE_REAL_CHAOS=false CASCADE_LIVE_DEMO_MODE=false CASCADE_ACTIVE_CLUSTER_CONTEXT-
+kubectl -n cascade-system set env deployment/remediation-executor-service EXECUTION_ENABLED=false ENABLE_DANGEROUS_ACTIONS=false ENABLE_REAL_REMEDIATION=false CASCADE_LIVE_DEMO_MODE=false CASCADE_ACTIVE_CLUSTER_CONTEXT-
+```
+
+This is local demo mode only. It is opt-in, bounded, policy-gated, approval-required, and dry-run-first; it is not production safety guidance.
 
 ## Useful Scripts
 

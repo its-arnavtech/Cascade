@@ -35,6 +35,7 @@ Safety is deny-by-default:
 - secrets, configmaps, RBAC, service accounts, and namespaces cannot be mutated.
 - human approval is required for real execution.
 - `EXECUTION_ENABLED=false` by default blocks real execution.
+- live-demo execution also requires `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, `CASCADE_LIVE_DEMO_MODE=true`, the allowlisted local context, and a prior successful dry-run.
 - no arbitrary shell commands or LLM-generated executable commands are accepted.
 
 ## Supported Action Types
@@ -70,6 +71,18 @@ Default Remediation workflows are dry-run only. `POST /executions/dry-run` store
 - Kubernetes RBAC permits the specific action.
 
 The default deployment sets `EXECUTION_ENABLED=false`, so acceptance verifies that real execution is rejected.
+
+## Opt-in Local Live Demo
+
+Real remediation is scripts-only for public local demos:
+
+```powershell
+.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+The script verifies `kind-cascade`, `cascade-targets`, a safe Sock Shop service, approval, rollback steps, post-checks, and dry-run validation before executing. The default action is `restart_deployment` for `catalogue`. It temporarily enables `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the remediation executor.
+
+Intentionally blocked actions include namespace deletion, deployment deletion, database or broker mutation, `cascade-system` mutation, protected services, wildcard selectors, and any action without rollback/post-checks.
 
 ## ClickHouse Schema
 
@@ -168,7 +181,7 @@ It collects pod/service status, events, Redpanda topics, ClickHouse counts, rece
 ## Known Limitations
 
 - real execution is disabled by default.
-- no UI approval console yet.
+- live execution is local demo mode only and scripts-only.
 - no production authentication/RBAC yet.
 - recommendations are deterministic/template-based.
 - no arbitrary commands are accepted.

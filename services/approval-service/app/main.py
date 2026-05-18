@@ -68,6 +68,10 @@ async def decide(payload: ApprovalRequest) -> dict[str, Any]:
     if violations:
         raise HTTPException(status_code=400, detail={"violations": violations})
     plan_row = await clickhouse.remediation_plan(payload.plan_id)
+    plan_type = "remediation"
+    if plan_row is None:
+        plan_row = await clickhouse.chaos_plan(payload.plan_id)
+        plan_type = "chaos"
     if plan_row is None:
         raise HTTPException(status_code=404, detail="Plan not found")
     approval = {
@@ -79,7 +83,7 @@ async def decide(payload: ApprovalRequest) -> dict[str, Any]:
         "approver_role": payload.approver_role,
         "reason": payload.reason,
         "expires_at": _future(payload.expires_minutes) if payload.decision == "approved" else None,
-        "metadata": {"source": "approval-service", "expires_minutes": payload.expires_minutes},
+        "metadata": {"source": "approval-service", "plan_type": plan_type, "expires_minutes": payload.expires_minutes},
     }
     await clickhouse.insert_remediation_approval({
         "approval_id": approval["approval_id"],
@@ -93,7 +97,7 @@ async def decide(payload: ApprovalRequest) -> dict[str, Any]:
         "approval_metadata_json": _json(approval["metadata"]),
     })
     event_type = "remediation.approved" if payload.decision == "approved" else "remediation.rejected"
-    await _publish(event_type, _decode_plan(plan_row), approval, payload.reason)
+    await _publish(event_type, _decode_plan(plan_row, plan_type), approval, payload.reason)
     logger.info("approval decision=%s plan_id=%s approval_id=%s", payload.decision, payload.plan_id, approval["approval_id"])
     return {"approval": approval}
 
@@ -135,8 +139,12 @@ def _decode_approval(row: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
-def _decode_plan(row: dict[str, Any]) -> dict[str, Any]:
+def _decode_plan(row: dict[str, Any], plan_type: str = "remediation") -> dict[str, Any]:
     decoded = dict(row)
+    if plan_type == "chaos":
+        for key in ["target_selector_json", "safety_policy_json", "manifest_json", "plan_json"]:
+            decoded[key.replace("_json", "")] = _loads(decoded.pop(key, "{}"))
+        return decoded
     for key in ["remediation_steps_json", "rollback_steps_json", "evidence_refs_json", "safety_findings_json", "dry_run_manifest_json", "plan_json"]:
         decoded[key.replace("_json", "")] = _loads(decoded.pop(key, "{}"))
     return decoded

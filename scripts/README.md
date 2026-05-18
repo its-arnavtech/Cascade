@@ -12,6 +12,10 @@ Use these scripts from the repository root unless a script says otherwise.
 | `debug-all.ps1` | Full diagnostic sweep |
 | `ci-local.ps1` | Run CI checks locally |
 | `audit-secrets.ps1` | Scan tracked files for leaked secrets |
+| `verify-chaos-mesh.ps1` | Verify local Chaos Mesh CRDs/controller and Cascade namespace protections |
+| `install-chaos-mesh.ps1` | Install or upgrade Chaos Mesh for explicitly confirmed local kind demos |
+| `demo-real-chaos.ps1` | Run opt-in bounded real chaos in local demo mode |
+| `demo-real-remediation.ps1` | Run opt-in bounded real remediation in local demo mode |
 
 ## Quick Start
 

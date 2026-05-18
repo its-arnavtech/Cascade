@@ -9,6 +9,7 @@ Hardening makes Cascade safer to run, easier to debug, easier to demo, and safer
 - Redpanda topic checks use exact topic matching and shared helper logic.
 - ClickHouse and Qdrant backup/list/restore helpers are available.
 - Secret audit and `.gitignore` hardening reduce publish risk.
+- Live chaos/remediation demo scripts require explicit local-kind opt-in, approval, and dry-run-first validation.
 - `accept-all.ps1` provides a single end-to-end acceptance runner.
 - `debug-all.ps1` creates a local support bundle.
 
@@ -60,6 +61,7 @@ The scanner reports suspicious keys without values and fails on high-confidence 
 - `.env.example` contains placeholders only.
 - No real kubeconfigs, tokens, credentials, private keys, backups, or support bundles are tracked.
 - README states that Cascade is production-inspired local infrastructure, not a production deployment.
+- Live demo mode is disabled again after any local real-action demonstration.
 
 ## Future Work
 

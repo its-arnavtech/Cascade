@@ -85,6 +85,7 @@ Restore scripts are dry-run by default and require `-ConfirmRestore`.
 - Real remediation execution is disabled by default.
 - The Command Center proxy blocks real remediation and real chaos execution unless explicitly reconfigured.
 - Chaos engineering acceptance should use `-DryRunOnly` for normal validation.
+- Real chaos/remediation demos must use the scripts-only local demo path with `-ConfirmLocalKind`.
 - Local rate limiting is in-memory and applies only to the `command-center-api` pod.
 
 ## Reset And Cleanup
@@ -95,6 +96,14 @@ Use phase reset scripts when a local demo has accumulated too much state:
 .\scripts\reset-command-center.ps1
 .\scripts\reset-remediation.ps1
 .\scripts\reset-chaos.ps1
+```
+
+Cleanup live demo resources and disable live flags:
+
+```powershell
+kubectl -n cascade-targets delete podchaos,networkchaos,stresschaos -l cascade.io/phase=phase7 --ignore-not-found=true
+kubectl -n cascade-system set env deployment/chaos-executor-service ENABLE_DANGEROUS_ACTIONS=false ENABLE_REAL_CHAOS=false CASCADE_LIVE_DEMO_MODE=false CASCADE_ACTIVE_CLUSTER_CONTEXT-
+kubectl -n cascade-system set env deployment/remediation-executor-service EXECUTION_ENABLED=false ENABLE_DANGEROUS_ACTIONS=false ENABLE_REAL_REMEDIATION=false CASCADE_LIVE_DEMO_MODE=false CASCADE_ACTIVE_CLUSTER_CONTEXT-
 ```
 
 Repeated demos create additional ClickHouse rows. For latest run views, query by the relevant timestamp field and group by run or plan identifier instead of treating raw transition rows as unique final states.

@@ -8,6 +8,7 @@ from services.shared.chaos.events import chaos_event
 from services.shared.chaos.safety import default_policy, validate_plan
 from services.shared.chaos.scoring import compute_resilience_score, grade_for_score
 from services.shared.chaos.templates import build_manifest, stable_id
+from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
 from services.shared.storage.clickhouse_client import ClickHouseClient
 
 
@@ -59,6 +60,53 @@ class Phase7CoreTests(unittest.TestCase):
         result = validate_plan(self._plan(), default_policy(), approved=True, dry_run=False)
         self.assertTrue(result.allowed)
         self.assertGreaterEqual(result.safety_score, 0.9)
+
+    def test_live_chaos_denied_when_flags_are_false(self) -> None:
+        violations = validate_live_demo_gate(
+            action="ENABLE_REAL_CHAOS",
+            namespace="cascade-targets",
+            service="catalogue",
+            config=LiveDemoConfig(),
+            feature_enabled=False,
+            approval_current=True,
+            dry_run_passed=True,
+            current_context="kind-cascade",
+        )
+        self.assertTrue(any("ENABLE_DANGEROUS_ACTIONS=true" in item for item in violations))
+        self.assertTrue(any("ENABLE_REAL_CHAOS=true" in item for item in violations))
+        self.assertTrue(any("CASCADE_LIVE_DEMO_MODE=true" in item for item in violations))
+
+    def test_live_chaos_allowed_only_with_all_gates(self) -> None:
+        config = LiveDemoConfig(enable_dangerous_actions=True, enable_real_chaos=True, cascade_live_demo_mode=True)
+        violations = validate_live_demo_gate(
+            action="ENABLE_REAL_CHAOS",
+            namespace="cascade-targets",
+            service="catalogue",
+            config=config,
+            feature_enabled=True,
+            approval_current=True,
+            dry_run_passed=True,
+            current_context="kind-cascade",
+        )
+        self.assertEqual([], violations)
+
+    def test_live_chaos_denies_protected_context_and_missing_dry_run(self) -> None:
+        config = LiveDemoConfig(enable_dangerous_actions=True, enable_real_chaos=True, cascade_live_demo_mode=True)
+        violations = validate_live_demo_gate(
+            action="ENABLE_REAL_CHAOS",
+            namespace="cascade-system",
+            service="catalogue-db",
+            config=config,
+            feature_enabled=True,
+            approval_current=False,
+            dry_run_passed=False,
+            current_context="prod-cluster",
+        )
+        self.assertTrue(any("Cluster context" in item for item in violations))
+        self.assertTrue(any("Namespace" in item for item in violations))
+        self.assertTrue(any("protected" in item for item in violations))
+        self.assertTrue(any("approval" in item for item in violations))
+        self.assertTrue(any("dry-run" in item for item in violations))
 
     def test_pod_kill_template_has_required_labels(self) -> None:
         manifest = build_manifest("pod_kill", "chaos_exp_test", "cascade-targets", "catalogue", 30)

@@ -26,7 +26,7 @@ export function ChaosPage() {
   return (
     <div className="page">
       <div className="page-heading"><div><h2>Chaos</h2><p>Dry-run planning and dry-run execution only from the UI.</p></div></div>
-      <div className={`banner ${dangerousActionsEnabled ? "danger" : "warn"}`}><AlertTriangle size={18} />{dangerousActionsEnabled ? "LIVE MODE: Real chaos execution is enabled." : "Real chaos execution is blocked. All actions are dry-run only."}</div>
+      <div className={`banner ${dangerousActionsEnabled ? "danger" : "warn"}`}><AlertTriangle size={18} />{dangerousActionsEnabled ? "LIVE DEMO MODE: use scripts for real chaos; browser actions stay dry-run." : "Real chaos execution is blocked in the UI. Use scripts for opt-in local live demos."}</div>
       <form className="form-grid two-column" onSubmit={submit}>
         <div className="form-field"><label htmlFor="chaos-service">Target service</label><input id="chaos-service" value={form.target_service} onChange={(e) => setForm({ ...form, target_service: e.target.value })} placeholder="target service" /></div>
         <div className="form-field"><label htmlFor="chaos-kind">Experiment kind</label><select id="chaos-kind" value={form.experiment_kind} onChange={(e) => setForm({ ...form, experiment_kind: e.target.value })}><option>pod_kill</option><option>network_delay</option><option>stress_cpu</option></select></div>
