@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { AlertTriangle, Beaker, BookOpen, FileSearch, Gauge, Home, Info, RadioTower, RefreshCw, Shield, ShieldCheck, Stethoscope } from "lucide-react";
+import { AlertTriangle, Beaker, Bell, BookOpen, ChevronDown, FileSearch, Gauge, Home, Info, Plus, RadioTower, RefreshCw, Shield, Stethoscope, Wrench } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { dangerousActionsEnabled } from "../../api/client";
 import { useSystemHealth } from "../../api/hooks";
@@ -8,11 +8,11 @@ const nav = [
   { to: "/", label: "Overview", icon: Home },
   { to: "/telemetry", label: "Telemetry", icon: RadioTower },
   { to: "/anomalies", label: "Anomalies", icon: AlertTriangle },
-  { to: "/incidents", label: "Incidents", icon: FileSearch },
-  { to: "/knowledge", label: "Knowledge", icon: BookOpen },
   { to: "/investigations", label: "Investigations", icon: Stethoscope },
+  { to: "/knowledge", label: "Knowledge", icon: BookOpen },
   { to: "/chaos", label: "Chaos", icon: Beaker },
-  { to: "/remediation", label: "Remediation", icon: ShieldCheck },
+  { to: "/remediation", label: "Remediation", icon: Wrench },
+  { to: "/incidents", label: "Incidents", icon: FileSearch },
   { to: "/system", label: "System", icon: Gauge },
   { to: "/about", label: "About", icon: Info },
 ];
@@ -29,19 +29,18 @@ export function Shell({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <div className="brand">
           <svg className="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
-            <path d="M16 3 28 10v12l-12 7-12-7V10L16 3Z" />
-            <path d="M10 13h12M10 19h12M16 7v18" />
+            <path d="M25.7 9.5a11 11 0 1 0 0 13" />
+            <path d="M15.6 5.2a11 11 0 0 1 9.3 5.1l-6 3.5a4.1 4.1 0 1 0 0 4.5l6 3.4a11 11 0 0 1-9.3 5.1" />
           </svg>
           <div>
             <strong>Cascade</strong>
-            <span>Command Center</span>
+            <span>Reliability Command Center</span>
           </div>
         </div>
         <div className={`safe-badge ${liveMode ? "live" : ""}`}>
           <Shield size={14} />
           {liveMode ? "LIVE MODE" : "DRY-RUN SAFE"}
         </div>
-        <div className="nav-section">Operations</div>
         <nav className="nav">
           {nav.map((item) => {
             const Icon = item.icon;
@@ -62,9 +61,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <span className={`service-dot ${degraded ? "warn" : "ok"}`} />
           <span>{degraded ? `${degraded} degraded` : "Services OK"}</span>
         </div>
-        <div className="sidebar-foot">
-          <span>v0.1</span>
-          <span>local kind</span>
+        <div className="sidebar-tools">
+          <a href="/system"><Gauge size={18} /> Settings</a>
+          <a href="/about"><Info size={18} /> Integrations</a>
         </div>
       </aside>
       <main className="main">
@@ -72,16 +71,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div>
             <div className="eyebrow">cascade-system</div>
             <h1>Operator Command Center</h1>
-            <p>Kubernetes-native reliability operations</p>
           </div>
           <div className="topbar-actions">
-            <span>Updated {updated}</span>
-            <button type="button" className="icon-button" aria-label="Refresh dashboard data" onClick={() => void queryClient.invalidateQueries()}>
-              <RefreshCw size={16} />
+            <button type="button" className="ghost-button" aria-label="Refresh dashboard data" onClick={() => void queryClient.invalidateQueries()}>
+              <RefreshCw size={16} /> Refresh <ChevronDown size={14} />
             </button>
+            <a className="primary-action" href="/investigations"><Plus size={18} /> Start Investigation</a>
+            <span className="topbar-divider" />
+            <button type="button" className="icon-button" aria-label="Notifications"><Bell size={17} /></button>
+            <div className="avatar" aria-label="Signed in operator">JD</div>
+            <ChevronDown size={16} className="muted-icon" aria-hidden="true" />
           </div>
         </header>
         {children}
+        <footer className="status-footer">
+          <span><span className={`service-dot ${degraded ? "warn" : "ok"}`} />{degraded ? `${degraded} services degraded` : "All Systems Operational"}</span>
+          <span>Data as of {updated}</span>
+        </footer>
       </main>
     </div>
   );

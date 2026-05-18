@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, MouseEvent, useRef, useState } from "react";
 import { useCreateInvestigation, useCreateRemediationPlan, useInvestigation, useInvestigations } from "../api/hooks";
 import { Badge } from "../components/Badge";
 import { JsonBlock } from "../components/JsonBlock";
@@ -10,12 +10,21 @@ export function InvestigationsPage() {
   const create = useCreateInvestigation();
   const createPlan = useCreateRemediationPlan();
   const [selected, setSelected] = useState("");
+  const detailRef = useRef<HTMLElement | null>(null);
   const detail = useInvestigation(selected);
   const [form, setForm] = useState({ trigger_type: "manual", service: "recommendationservice", namespace: "cascade-targets", objective: "Investigate recent reliability signals", max_steps: 12 });
 
   function submit(event: FormEvent) {
     event.preventDefault();
     create.mutate({ ...form, mode: "deterministic", max_steps: Number(form.max_steps) });
+  }
+
+  function viewInvestigation(event: MouseEvent<HTMLButtonElement>, row: Record<string, unknown>) {
+    event.stopPropagation();
+    const id = getInvestigationId(row);
+    if (!id) return;
+    setSelected(id);
+    window.requestAnimationFrame(() => detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   return (
@@ -31,18 +40,62 @@ export function InvestigationsPage() {
       </form>
       <div aria-live="polite">{create.error ? <div className="state error">{create.error.message}</div> : null}{create.data ? <div className="state success">Created investigation {String(create.data.investigation_id ?? "")}</div> : null}</div>
       <StatusPanel title="Recent Investigations" loading={investigations.isLoading} error={investigations.error}>
-        <DataTable caption="Recent investigations" rows={investigations.data?.investigations ?? []} columns={[{ key: "created_at", label: "Created", width: "140px" }, { key: "status", label: "Status", width: "110px", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> }, { key: "service", label: "Service", width: "140px" }, { key: "objective", label: "Objective", render: (row) => String(row.objective ?? "").slice(0, 200) }, { key: "confidence", label: "Confidence", width: "100px", render: (row) => formatConfidence(row.confidence) }, { key: "open", label: "Open", width: "80px", align: "right", render: (row) => <button type="button" className="compact" onClick={() => setSelected(String(row.investigation_id ?? ""))}>View</button> }]} />
+        <DataTable
+          caption="Recent investigations"
+          rows={investigations.data?.investigations ?? []}
+          getRowClassName={(row) => getInvestigationId(row) === selected ? "row-selected" : ""}
+          onRowClick={(row) => {
+            const id = getInvestigationId(row);
+            if (id) setSelected(id);
+          }}
+          columns={[
+            { key: "created_at", label: "Created", width: "140px" },
+            { key: "status", label: "Status", width: "118px", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> },
+            { key: "service", label: "Service", width: "140px" },
+            { key: "objective", label: "Objective", render: (row) => String(row.objective ?? "").slice(0, 200) },
+            { key: "confidence", label: "Confidence", width: "100px", render: (row) => formatConfidence(row.confidence) },
+            {
+              key: "open",
+              label: "Open",
+              width: "96px",
+              align: "right",
+              render: (row) => {
+                const id = getInvestigationId(row);
+                return (
+                  <div className="table-actions">
+                    <button
+                      type="button"
+                      className="compact table-action"
+                      disabled={!id}
+                      aria-label={id ? `View investigation ${id}` : "Investigation detail unavailable"}
+                      onClick={(event) => viewInvestigation(event, row)}
+                    >
+                      View
+                    </button>
+                  </div>
+                );
+              },
+            },
+          ]}
+        />
       </StatusPanel>
-      <StatusPanel title="Investigation Detail" loading={detail.isLoading} error={detail.error}>
+      <section ref={detailRef} className="detail-anchor" aria-live="polite">
+      <StatusPanel title={selected ? `Investigation Detail: ${selected}` : "Investigation Detail"} loading={detail.isLoading} error={detail.error}>
         {selected ? (
           <>
             <button type="button" className="btn-dry" onClick={() => createPlan.mutate({ trigger_type: "investigation", trigger_id: selected, service: "", namespace: "cascade-targets", objective: `Create safe plan from investigation ${selected}`, preferred_action_type: "investigate_only" })}>Create remediation plan</button>
-            <InvestigationDetail value={detail.data} />
+            {detail.data ? <InvestigationDetail value={detail.data} /> : <div className="state">No investigation detail was returned for this record yet.</div>}
           </>
         ) : <div className="state">Select an investigation to inspect steps, tool calls, report, and suggested remediation text.</div>}
       </StatusPanel>
+      </section>
     </div>
   );
+}
+
+function getInvestigationId(row: Record<string, unknown>) {
+  const id = row.investigation_id ?? row.run_id ?? row.id;
+  return id === undefined || id === null || id === "" ? "" : String(id);
 }
 
 function InvestigationDetail({ value }: { value: unknown }) {

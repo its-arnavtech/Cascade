@@ -40,7 +40,7 @@ export function DataTable<T extends object>({
         <tbody>
           {rows.length ? (
             rows.map((row, index) => (
-              <tr key={rowKey(row, index)} className={getRowClassName?.(row)} onClick={onRowClick ? () => onRowClick(row) : undefined}>
+              <tr key={rowKey(row, index)} className={[getRowClassName?.(row), onRowClick ? "row-clickable" : ""].filter(Boolean).join(" ")} onClick={onRowClick ? () => onRowClick(row) : undefined}>
                 {columns.map((column) => {
                   const raw = (row as Record<string, unknown>)[column.key];
                   const title = typeof raw === "string" || typeof raw === "number" ? String(raw) : undefined;
