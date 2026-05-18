@@ -1,6 +1,6 @@
 # Cascade
 
-Cascade is a Kubernetes-native AI reliability command center that observes services, detects anomalies, retrieves operational knowledge, runs deterministic investigations, and recommends safe remediation workflows with human approval and dry-run validation.
+Cascade is a Kubernetes-native AI reliability command center that observes an authorized target workload, builds topology, collects telemetry, detects abnormal behavior, predicts blast radius, ranks likely causes, and recommends policy-gated remediation with human approval and dry-run validation.
 
 It is a local, production-inspired MVP for demonstrating how telemetry, incidents, runbooks, topology, safety policy, and operator workflows can be connected inside a Kubernetes reliability platform.
 
@@ -19,7 +19,7 @@ Cascade turns raw service signals into an operator-facing reliability workflow:
 - Validates remediation plans through dry-run workflows.
 - Presents the system through the Command Center web UI.
 
-## Quick Start
+## Quick Demo With Sock Shop
 
 From the repository root:
 
@@ -27,10 +27,12 @@ From the repository root:
 cd C:\Cascade
 
 .\scripts\deploy.ps1
+.\scripts\deploy-targets.ps1
+.\scripts\ensure-redpanda-topics.ps1
 .\scripts\accept.ps1
 ```
 
-Open the Command Center:
+Open the Command Center using:
 
 ```powershell
 kubectl port-forward -n cascade-system svc/command-center 18300:8030
@@ -47,6 +49,57 @@ http://localhost:18300
 Modern distributed systems generate too much telemetry and too many failure signals for humans to manually connect in real time. Cascade explores a practical reliability workflow where telemetry, anomalies, runbooks, incident history, topology, and safety policies are stitched together into a single SRE command surface.
 
 The goal is not autonomous production control. The goal is safer operator assistance: evidence gathering, context retrieval, deterministic investigation, human approval, and dry-run validation before any dangerous action is considered.
+
+## Bring Your Own Target Workload
+
+Sock Shop remains the canonical demo, but external users can connect their own Kubernetes app as an additional target path.
+
+Safe local/dev/staging flow:
+
+```powershell
+cd C:\Cascade
+
+.\scripts\deploy.ps1
+
+kubectl create namespace cascade-targets --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace cascade-targets cascade.io/monitored=true --overwrite
+kubectl apply -n cascade-targets -f path\to\your-app.yaml
+
+.\scripts\validate-target.ps1 -Namespace cascade-targets -ExpectedServices frontend,api -ShowLabels
+```
+
+Describe the app with a target config:
+
+```powershell
+Copy-Item -Recurse targets\template targets\my-app
+notepad targets\my-app\target.yaml
+
+.\scripts\validate-target.ps1 -Namespace cascade-targets -TargetConfig targets\my-app\target.yaml -Strict
+.\scripts\configure-target.ps1 -TargetConfig targets\my-app\target.yaml
+.\scripts\ensure-redpanda-topics.ps1
+.\scripts\accept-telemetry.ps1
+```
+
+Open the Command Center:
+
+```powershell
+kubectl port-forward -n cascade-system svc/command-center 18300:8030
+```
+
+Then browse to `http://localhost:18300`.
+
+The target config fields are `name`, `namespace`, `frontend_service`, `services`, `dependency_edges`, `safe_chaos_services`, `protected_services`, and `load_generator`. Use `protected_services` for databases, brokers, caches, queues, auth stores, and stateful services. Use `safe_chaos_services` only for stateless services you own and are willing to test.
+
+Dry-run remains the default. Optional live chaos engineering and remediation demos are explicit local-kind flows only:
+
+```powershell
+.\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
+.\scripts\verify-chaos-mesh.ps1
+.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+Do not run live controlled failure injection or live remediation against production.
 
 ## Current Status
 
@@ -236,6 +289,7 @@ Useful focused checks:
 
 ```powershell
 .\scripts\audit-secrets.ps1
+.\scripts\validate-target.ps1 -Namespace cascade-targets
 .\scripts\accept-chaos.ps1 -DryRunOnly
 .\scripts\demo.ps1 -NoBrowser
 .\scripts\debug-all.ps1
@@ -284,7 +338,7 @@ Run bounded, policy-gated live demos:
 .\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
 ```
 
-The scripts temporarily enable live-demo flags on the relevant executor and require approval records plus dry-run-first validation. They are scoped to `cascade-targets` and safe Sock Shop services such as `catalogue`; they intentionally block `cascade-system`, databases, brokers, session stores, wildcard selectors, namespace deletion, and deployment deletion.
+The scripts temporarily enable live-demo flags on the relevant executor and require approval records plus dry-run-first validation. The real chaos demo creates a bounded plan, runs `/runs` with `dry_run=true`, records an approved local-demo decision through `approval-service`, then submits real execution with both the returned `approval_id` and `approved=true`. The real remediation demo creates a `restart_deployment` plan with rollback steps and post-checks, runs `/executions/dry-run`, records approval, then submits `/executions` with the returned `approval_id` and `dry_run=false`. They are scoped to `cascade-targets` and safe Sock Shop services such as `catalogue`; they intentionally block `cascade-system`, databases, brokers, session stores, wildcard selectors, namespace deletion, and deployment deletion.
 
 Disable live mode and clean up:
 
@@ -376,6 +430,12 @@ Known areas that would need production work include:
 Useful starting points:
 
 - `docs/architecture/final-architecture.md`
+- `docs/operations/target-workload-integration.md`
+- `docs/operations/target-onboarding-checklist.md`
+- `targets/template/README.md`
+- `scripts/validate-target.ps1`
+- `docs/chaos.md`
+- `docs/remediation.md`
 - `docs/operations/ci-cd.md`
 - `docs/operations/runbook.md`
 - `docs/operations/backups.md`

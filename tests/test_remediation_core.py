@@ -8,7 +8,7 @@ from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
 from services.shared.remediation.events import remediation_event
 from services.shared.remediation.planner import build_plan
 from services.shared.remediation.safety import default_policy, validate_approval, validate_plan
-from services.shared.remediation.schemas import RemediationPlanRequest
+from services.shared.remediation.schemas import ExecutionRequest, RemediationPlanRequest
 
 
 class Phase8CoreTests(unittest.TestCase):
@@ -39,6 +39,23 @@ class Phase8CoreTests(unittest.TestCase):
         result = validate_plan(self._plan("restart_deployment"), default_policy(), approved=False, dry_run=False, execution_enabled=True)
         self.assertFalse(result.allowed)
         self.assertTrue(any("approval" in item for item in result.violations))
+
+    def test_safety_requires_post_checks_for_real_execution(self) -> None:
+        plan = self._plan("restart_deployment")
+        plan["post_checks"] = []
+        plan["plan"]["post_checks"] = []
+
+        result = validate_plan(plan, default_policy(), approved=True, dry_run=False, execution_enabled=True)
+
+        self.assertFalse(result.allowed)
+        self.assertTrue(any("Post-checks" in item for item in result.violations))
+
+    def test_demo_real_remediation_execution_payload_satisfies_schema(self) -> None:
+        payload = ExecutionRequest(plan_id="rem_plan_demo", approval_id="rem_approval_demo", dry_run=False)
+
+        self.assertEqual(payload.plan_id, "rem_plan_demo")
+        self.assertEqual(payload.approval_id, "rem_approval_demo")
+        self.assertFalse(payload.dry_run)
 
     def test_real_execution_disabled_by_default(self) -> None:
         result = validate_plan(self._plan("scale_deployment_noop"), default_policy(), approved=True, dry_run=False, execution_enabled=False)
@@ -94,6 +111,7 @@ class Phase8CoreTests(unittest.TestCase):
     def test_plan_generation_includes_rollback_and_evidence(self) -> None:
         plan = self._plan("investigate_only")
         self.assertGreaterEqual(len(plan["rollback_steps"]), 1)
+        self.assertGreaterEqual(len(plan["post_checks"]), 1)
         self.assertGreaterEqual(len(plan["evidence_refs"]), 1)
         self.assertGreater(plan["confidence"], 0)
 

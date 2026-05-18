@@ -189,7 +189,7 @@ Opt-in local live demo:
 .\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
 ```
 
-The live demo performs a bounded one-pod `PodChaos` against an allowlisted Sock Shop service, `catalogue` by default, for 10-30 seconds. It temporarily enables `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_CHAOS=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the chaos executor, then prints cleanup and disable commands. It does not target `cascade-system`, databases, brokers, session stores, or wildcard selectors.
+The live demo performs a bounded one-pod `PodChaos` against an allowlisted Sock Shop service, `catalogue` by default, for 10-30 seconds. It temporarily enables `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_CHAOS=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the chaos executor only, creates the plan, runs executor dry-run validation first, records an approved local-demo decision through the existing approval service, then executes the real run with both the returned `approval_id` and `approved=true`. The script cleans up Cascade-managed Chaos Mesh resources and disables the live flags in a `finally` block. It does not target `cascade-system`, databases, brokers, session stores, or wildcard selectors.
 
 Debug:
 

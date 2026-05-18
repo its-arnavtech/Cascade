@@ -6,6 +6,7 @@ from pathlib import Path
 
 from services.shared.chaos.events import chaos_event
 from services.shared.chaos.safety import default_policy, validate_plan
+from services.shared.chaos.schemas import ChaosRunRequest
 from services.shared.chaos.scoring import compute_resilience_score, grade_for_score
 from services.shared.chaos.templates import build_manifest, stable_id
 from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
@@ -55,6 +56,21 @@ class Phase7CoreTests(unittest.TestCase):
         result = validate_plan(self._plan(), default_policy(), approved=False, dry_run=False)
         self.assertFalse(result.allowed)
         self.assertTrue(any("approved" in item for item in result.violations))
+
+    def test_demo_real_chaos_run_payload_satisfies_schema(self) -> None:
+        payload = ChaosRunRequest(
+            plan_id="chaos_plan_demo",
+            approval_id="rem_approval_demo",
+            dry_run=False,
+            approved=True,
+            observation_window_seconds=10,
+            trigger_agent_investigation=False,
+        )
+
+        self.assertEqual(payload.plan_id, "chaos_plan_demo")
+        self.assertEqual(payload.approval_id, "rem_approval_demo")
+        self.assertFalse(payload.dry_run)
+        self.assertTrue(payload.approved)
 
     def test_safety_allows_bounded_pod_kill(self) -> None:
         result = validate_plan(self._plan(), default_policy(), approved=True, dry_run=False)

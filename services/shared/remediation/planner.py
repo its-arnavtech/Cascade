@@ -52,6 +52,7 @@ def build_plan(request: RemediationPlanRequest, evidence_refs: list[dict[str, An
         "action_summary": plan_body["summary"],
         "remediation_steps": plan_body["remediation_steps"],
         "rollback_steps": plan_body["rollback_steps"],
+        "post_checks": plan_body["post_checks"],
         "evidence_refs": evidence_refs,
         "safety_findings": [],
         "dry_run_manifest": dry_run_manifest(action_type, request.service, request.namespace),

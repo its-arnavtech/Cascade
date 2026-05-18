@@ -79,6 +79,7 @@ def test_chaos_rejects_denied_resource_kind_and_wildcard_selector() -> None:
 def test_remediation_requires_rollback_and_post_checks_for_execution() -> None:
     plan = _remediation_plan("restart_deployment")
     plan["rollback_steps"] = []
+    plan["post_checks"] = []
     plan["plan"]["post_checks"] = []
 
     result = validate_remediation_plan(plan, remediation_policy(), approved=True, dry_run=False, execution_enabled=True)

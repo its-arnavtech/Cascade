@@ -12,6 +12,10 @@ Use these scripts from the repository root unless a script says otherwise.
 | `debug-all.ps1` | Full diagnostic sweep |
 | `ci-local.ps1` | Run CI checks locally |
 | `audit-secrets.ps1` | Scan tracked files for leaked secrets |
+| `deploy-targets.ps1` | Deploy the canonical Sock Shop target workload |
+| `validate-target.ps1` | Read-only readiness validation for a target workload namespace |
+| `configure-target.ps1` | Register a target config with running Cascade deployments |
+| `ensure-redpanda-topics.ps1` | Ensure required Kafka-compatible Redpanda topics exist |
 | `verify-chaos-mesh.ps1` | Verify local Chaos Mesh CRDs/controller and Cascade namespace protections |
 | `install-chaos-mesh.ps1` | Install or upgrade Chaos Mesh for explicitly confirmed local kind demos |
 | `demo-real-chaos.ps1` | Run opt-in bounded real chaos in local demo mode |
@@ -21,6 +25,7 @@ Use these scripts from the repository root unless a script says otherwise.
 
 ```powershell
 .\scripts\deploy.ps1
+.\scripts\deploy-targets.ps1
 .\scripts\accept.ps1
 .\scripts\demo.ps1 -NoBrowser
 ```
@@ -48,6 +53,32 @@ The main scripts are the demo-facing entrypoints. Component-scoped helpers are k
 | Remediation | `deploy-remediation.ps1` | `accept-remediation.ps1` | `demo-remediation.ps1` | `debug-remediation.ps1` | `reset-remediation.ps1` |
 | Command Center UI | `deploy.ps1` | `accept.ps1` | `demo.ps1` | `debug.ps1` | `reset-command-center.ps1` |
 
+## Bring Your Own Target
+
+Default safe path:
+
+```powershell
+kubectl create namespace cascade-targets --dry-run=client -o yaml | kubectl apply -f -
+kubectl label namespace cascade-targets cascade.io/monitored=true --overwrite
+kubectl apply -n cascade-targets -f path\to\your-app.yaml
+
+.\scripts\validate-target.ps1 -Namespace cascade-targets -ExpectedServices frontend,api -ShowLabels
+```
+
+Target config path:
+
+```powershell
+Copy-Item -Recurse targets\template targets\my-app
+notepad targets\my-app\target.yaml
+
+.\scripts\validate-target.ps1 -Namespace cascade-targets -TargetConfig targets\my-app\target.yaml -Strict
+.\scripts\configure-target.ps1 -TargetConfig targets\my-app\target.yaml
+.\scripts\ensure-redpanda-topics.ps1
+.\scripts\accept-telemetry.ps1
+```
+
+`validate-target.ps1` is read-only. `configure-target.ps1` changes Cascade deployment environment and config mounts; use `-DryRun` to preview first.
+
 ## Validation And Safety
 
 Run the full local acceptance suite:
@@ -71,9 +102,24 @@ Run secret hygiene before publishing:
 Useful safe flags:
 
 - `-DryRunOnly` keeps chaos validation non-disruptive.
+- `validate-target.ps1 -Strict` exits nonzero when readiness checks fail.
+- `configure-target.ps1 -DryRun` previews target registration without changing deployments.
 - `-NoBrowser` prevents demo scripts from opening a browser.
 - `-ConfirmRestore` is required before restore scripts mutate local data stores.
 - `-SkipDockerBuild` skips Docker image smoke builds in local CI.
+
+## Optional Live Local-Demo Path
+
+Dry-run acceptance is the default. The following scripts are for explicitly confirmed local-kind resilience testing only:
+
+```powershell
+.\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
+.\scripts\verify-chaos-mesh.ps1
+.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+Live controlled failure injection and live remediation remain opt-in, policy-gated, and unsuitable for production.
 
 Backups and restores:
 

@@ -75,6 +75,7 @@ class RemediationPlan(BaseModel):
     action_summary: str = ""
     remediation_steps: list[str] = Field(default_factory=list)
     rollback_steps: list[str] = Field(default_factory=list)
+    post_checks: list[str] = Field(default_factory=list)
     evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
     safety_findings: list[str] = Field(default_factory=list)
     dry_run_manifest: dict[str, Any] = Field(default_factory=dict)

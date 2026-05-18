@@ -67,6 +67,7 @@ Default Remediation workflows are dry-run only. `POST /executions/dry-run` store
 - action type is executable.
 - namespace and service are allowlisted.
 - rollback steps exist.
+- post-checks exist.
 - `EXECUTION_ENABLED=true`.
 - Kubernetes RBAC permits the specific action.
 
@@ -80,7 +81,7 @@ Real remediation is scripts-only for public local demos:
 .\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
 ```
 
-The script verifies `kind-cascade`, `cascade-targets`, a safe Sock Shop service, approval, rollback steps, post-checks, and dry-run validation before executing. The default action is `restart_deployment` for `catalogue`. It temporarily enables `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the remediation executor.
+The script verifies `kind-cascade`, `cascade-targets`, a safe Sock Shop service, rollback steps, post-checks, and dry-run validation before executing. The default action is `restart_deployment` for `catalogue`. It creates a plan, runs `POST /executions/dry-run`, records a non-expired approval through `approval-service`, verifies approval status, then calls `POST /executions` with the returned `approval_id` and `dry_run=false`. Rollback and post-check requirements are satisfied by the persisted plan fields. It temporarily enables `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the remediation executor, then disables them in a `finally` block.
 
 Intentionally blocked actions include namespace deletion, deployment deletion, database or broker mutation, `cascade-system` mutation, protected services, wildcard selectors, and any action without rollback/post-checks.
 
