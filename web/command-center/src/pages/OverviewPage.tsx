@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, BarChart3, BookOpen, CheckCircle2, Database, GitBranch, Layers3, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { useAnomalies, useCounts, useFeatureWindows, useIncidents, useInvestigations, useKnowledgeStats, useRemediationPlans, useResilienceScores, useSystemHealth } from "../api/hooks";
@@ -61,7 +62,9 @@ export function OverviewPage() {
             {targetServices.map((service) => (
               <div key={service} className={`topology-node ${serviceHealthTone(service, health.data)}`}>
                 <CheckCircle2 size={14} />
-                <strong>{service}</strong>
+                <strong>{serviceNameParts(service).map((part, index) => (
+                  <Fragment key={`${service}-${part}-${index}`}>{index > 0 ? <wbr /> : null}{part}</Fragment>
+                ))}</strong>
                 <span>{serviceHealthLabel(service, health.data)}</span>
               </div>
             ))}
@@ -190,6 +193,13 @@ function serviceHealthLabel(service: string, health?: { name: string; ok: boolea
   const match = health?.find((item) => item.name.includes(service));
   if (!match) return "Monitoring";
   return match.ok ? "Healthy" : "Degraded";
+}
+
+function serviceNameParts(service: string) {
+  if (service.endsWith("service") && service.length > "cartservice".length) {
+    return [service.slice(0, -"service".length), "service"];
+  }
+  return [service];
 }
 
 function recommendedTitle(incident?: Record<string, unknown>, anomaly?: Record<string, unknown>) {
