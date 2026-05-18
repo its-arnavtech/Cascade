@@ -8,10 +8,14 @@ from kubernetes.client import ApiException
 
 class KubernetesRemediationClient:
     def __init__(self) -> None:
+        self.active_context = ""
         try:
             config.load_incluster_config()
+            self.active_context = "in-cluster"
         except Exception:
+            _, active_context = config.list_kube_config_contexts()
             config.load_kube_config()
+            self.active_context = str((active_context or {}).get("name") or "")
         self.apps = client.AppsV1Api()
         self.core = client.CoreV1Api()
 
@@ -21,6 +25,9 @@ class KubernetesRemediationClient:
             return True
         except Exception:
             return False
+
+    def current_context(self) -> str:
+        return self.active_context
 
     def deployment_exists(self, namespace: str, name: str) -> bool:
         try:

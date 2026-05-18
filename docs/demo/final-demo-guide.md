@@ -49,6 +49,16 @@ If Prometheus or Grafana are installed in your local Observability foundation en
 8. Create a remediation plan, approve it, run dry-run validation, and show that real execution remains blocked.
 9. Show safety policies, rate-limit configuration, and the final support bundle script.
 
+Optional local live demo, only after the dry-run flow passes:
+
+```powershell
+.\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
+.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+These commands are opt-in, bounded, policy-gated, approval-required, and dry-run-first. They are local demo mode only and do not imply production safety.
+
 ## Troubleshooting
 
 - Missing Command Center endpoints: rerun `.\scripts\deploy.ps1`.

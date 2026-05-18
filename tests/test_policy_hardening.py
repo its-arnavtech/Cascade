@@ -135,7 +135,11 @@ def test_policy_api_exposes_explicit_denied_and_protected_fields() -> None:
 
     assert "denied" in chaos_response
     assert "protected" in chaos_response
+    assert chaos_response["real_chaos_enabled"] is False
+    assert chaos_response["live_demo_mode"] is False
     assert "resource_kinds" in chaos_response["denied"]
     assert "denied" in remediation_response
     assert "protected" in remediation_response
+    assert remediation_response["real_remediation_enabled"] is False
+    assert remediation_response["live_demo_mode"] is False
     assert "services" in remediation_response["protected"]

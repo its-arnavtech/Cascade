@@ -11,10 +11,14 @@ PLURALS = {"PodChaos": "podchaos", "NetworkChaos": "networkchaos", "StressChaos"
 
 class KubernetesChaosClient:
     def __init__(self) -> None:
+        self.active_context = ""
         try:
             config.load_incluster_config()
+            self.active_context = "in-cluster"
         except Exception:
+            _, active_context = config.list_kube_config_contexts()
             config.load_kube_config()
+            self.active_context = str((active_context or {}).get("name") or "")
         self.custom = client.CustomObjectsApi()
         self.core = client.CoreV1Api()
         self.apiext = client.ApiextensionsV1Api()
@@ -32,6 +36,9 @@ class KubernetesChaosClient:
             return True
         except Exception:
             return False
+
+    def current_context(self) -> str:
+        return self.active_context
 
     def target_count(self, namespace: str, service: str) -> int:
         pods = self.core.list_namespaced_pod(namespace=namespace, label_selector=f"app={service}")

@@ -166,7 +166,6 @@ code { color: #bfdbfe; font-family: "SFMono-Regular", Consolas, "Liberation Mono
 .topbar h1 { margin: 2px 0 0; font-size: 18px; font-weight: 720; }
 .topbar-actions { display: inline-flex; align-items: center; gap: 12px; color: #9fafc2; font-size: 12px; }
 .topbar-divider { width: 1px; height: 36px; background: rgba(82, 108, 139, .28); }
-.avatar { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 999px; background: #1d2734; color: #f8fafc; font-size: 13px; font-weight: 800; }
 .muted-icon { color: #7f90a6; }
 .status-footer {
   position: fixed;

@@ -78,6 +78,18 @@ The normal demo target for chaos is `catalogue` in namespace `cascade-targets`. 
 
 The Command Center UI also exposes dry-run planning and dry-run execution only by default.
 
+## Optional Local Live Actions
+
+Real action demos are scripts-only and require explicit local-kind confirmation:
+
+```powershell
+.\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
+.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+The live path is bounded to `cascade-targets` and safe Sock Shop services. It blocks databases, brokers, session stores, `cascade-system`, wildcard selectors, namespace deletion, and deployment deletion. Use it only on your own local demo cluster.
+
 ## Command Center Demo
 
 ```powershell

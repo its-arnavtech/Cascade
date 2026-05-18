@@ -52,7 +52,7 @@ export function RemediationPage() {
   return (
     <div className="page">
       <div className="page-heading"><div><h2>Remediation</h2><p>Plan, approval, and dry-run validation workflows backed by real services.</p></div></div>
-      <div className={`banner ${dangerousActionsEnabled ? "danger" : "warn"}`}><AlertTriangle size={18} />{dangerousActionsEnabled ? "LIVE MODE: Real remediation execution is enabled." : "Real remediation execution is blocked. Plan, approval, and validation stay dry-run by default."}</div>
+      <div className={`banner ${dangerousActionsEnabled ? "danger" : "warn"}`}><AlertTriangle size={18} />{dangerousActionsEnabled ? "LIVE DEMO MODE: use scripts for real remediation; browser actions stay dry-run." : "Real remediation execution is blocked in the UI. Plan, approval, and validation stay dry-run by default."}</div>
       <section className="wizard panel">
         <div className="step-indicator">
           {[1, 2, 3].map((step) => <button type="button" key={step} className={`${activeStep === step ? "active" : ""} ${activeStep > step ? "done" : ""}`} onClick={() => setActiveStep(step)}>{activeStep > step ? <Check size={13} /> : step}<span>{step === 1 ? "Create plan" : step === 2 ? "Record approval" : "Dry-run validation"}</span></button>)}

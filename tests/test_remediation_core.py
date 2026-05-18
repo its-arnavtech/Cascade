@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from services.shared.agents.tool_contracts import MUTATING_TOOL_NAMES, TOOL_REGISTRY
+from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
 from services.shared.remediation.events import remediation_event
 from services.shared.remediation.planner import build_plan
 from services.shared.remediation.safety import default_policy, validate_approval, validate_plan
@@ -43,6 +44,47 @@ class Phase8CoreTests(unittest.TestCase):
         result = validate_plan(self._plan("scale_deployment_noop"), default_policy(), approved=True, dry_run=False, execution_enabled=False)
         self.assertFalse(result.allowed)
         self.assertTrue(any("EXECUTION_ENABLED=false" in item for item in result.violations))
+
+    def test_live_remediation_denied_when_flags_are_false(self) -> None:
+        violations = validate_live_demo_gate(
+            action="ENABLE_REAL_REMEDIATION",
+            namespace="cascade-targets",
+            service="catalogue",
+            config=LiveDemoConfig(),
+            feature_enabled=False,
+            approval_current=True,
+            dry_run_passed=True,
+            current_context="kind-cascade",
+        )
+        self.assertTrue(any("ENABLE_DANGEROUS_ACTIONS=true" in item for item in violations))
+        self.assertTrue(any("ENABLE_REAL_REMEDIATION=true" in item for item in violations))
+
+    def test_live_remediation_allowed_only_with_all_gates(self) -> None:
+        config = LiveDemoConfig(enable_dangerous_actions=True, enable_real_remediation=True, cascade_live_demo_mode=True)
+        violations = validate_live_demo_gate(
+            action="ENABLE_REAL_REMEDIATION",
+            namespace="cascade-targets",
+            service="payment",
+            config=config,
+            feature_enabled=True,
+            approval_current=True,
+            dry_run_passed=True,
+            current_context="kind-cascade",
+        )
+        self.assertEqual([], violations)
+
+    def test_remediation_delete_deployment_and_namespace_are_denied(self) -> None:
+        plan = self._plan("restart_deployment")
+        plan["action_type"] = "delete_deployment"
+        result = validate_plan(plan, default_policy(), approved=True, dry_run=False, execution_enabled=True)
+        self.assertFalse(result.allowed)
+        self.assertTrue(any("unsupported" in item for item in result.violations))
+
+        plan = self._plan("investigate_only")
+        plan["dry_run_manifest"] = {"kind": "Namespace", "metadata": {"name": "cascade-targets"}}
+        result = validate_plan(plan, default_policy())
+        self.assertFalse(result.allowed)
+        self.assertTrue(any("namespaces cannot be mutated" in item for item in result.violations))
 
     def test_safety_allows_investigate_only_with_evidence(self) -> None:
         result = validate_plan(self._plan("investigate_only"), default_policy())

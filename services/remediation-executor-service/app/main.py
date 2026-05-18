@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
+from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
 from services.shared.remediation.approval import is_approval_current
 from services.shared.remediation.dry_run import KubernetesRemediationClient, local_dry_run
 from services.shared.remediation.events import remediation_event
@@ -27,6 +28,14 @@ class Settings(BaseSettings):
     remediation_events_topic: str = "remediation.actions"
     remediation_publish_events: bool = True
     execution_enabled: bool = False
+    enable_dangerous_actions: bool = False
+    enable_real_remediation: bool = False
+    cascade_live_demo_mode: bool = False
+    cascade_allowed_cluster_context: str = "kind-cascade"
+    cascade_active_cluster_context: str = ""
+    cascade_allowed_target_namespace: str = "cascade-targets"
+    cascade_require_approval: bool = True
+    cascade_require_dry_run_first: bool = True
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
@@ -59,14 +68,14 @@ async def shutdown() -> None:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "remediation-executor-service"}
+    return {"status": "ok", "service": "remediation-executor-service", **_live_status()}
 
 
 @app.get("/ready")
 async def ready() -> dict[str, Any]:
     ch = await clickhouse.ping()
     kube_ready = bool(kube and kube.ready())
-    response = {"status": "ok" if ch else "degraded", "service": "remediation-executor-service", "clickhouse": ch, "kubernetes": kube_ready, "execution_enabled": settings.execution_enabled}
+    response = {"status": "ok" if ch else "degraded", "service": "remediation-executor-service", "clickhouse": ch, "kubernetes": kube_ready, "execution_enabled": settings.execution_enabled, **_live_status()}
     if not ch:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=response)
     return response
@@ -77,6 +86,7 @@ async def safety_policy() -> dict[str, Any]:
     policy = default_policy()
     data = policy.model_dump()
     data["execution_enabled"] = settings.execution_enabled
+    data.update(_live_status())
     data["denied"] = {"namespaces": policy.denied_namespaces, "services": policy.denied_services, "resource_kinds": policy.denied_resource_kinds}
     data["protected"] = {"services": policy.protected_services}
     return data
@@ -102,7 +112,7 @@ async def dry_run_execution(payload: ExecutionRequest) -> dict[str, Any]:
 async def execute(payload: ExecutionRequest) -> dict[str, Any]:
     plan = await _load_plan(payload.plan_id)
     approval = await _load_approval(payload.approval_id)
-    approved = is_approval_current(approval)
+    approved = bool(approval and approval.get("plan_id") == plan["plan_id"] and is_approval_current(approval))
     safety = validate_plan(plan, default_policy(), approved=approved, dry_run=payload.dry_run, execution_enabled=settings.execution_enabled)
     await _audit(plan, safety)
     if payload.dry_run:
@@ -113,6 +123,24 @@ async def execute(payload: ExecutionRequest) -> dict[str, Any]:
         await _violation(plan["plan_id"], execution["execution_id"], "execution_rejected", "high", "; ".join(safety.violations), payload.model_dump())
         await _publish("remediation.execution.failed", plan, approval or {}, execution, "; ".join(safety.violations))
         raise HTTPException(status_code=400, detail={"status": "rejected", "violations": safety.violations, "execution_id": execution["execution_id"]})
+
+    dry_run_passed = await _dry_run_passed(plan["plan_id"])
+    live_violations = validate_live_demo_gate(
+        action="ENABLE_REAL_REMEDIATION",
+        namespace=plan["namespace"],
+        service=plan["service"],
+        config=_live_config(),
+        feature_enabled=settings.enable_real_remediation,
+        approval_current=approved,
+        dry_run_passed=dry_run_passed,
+        current_context=kube.current_context() if kube else "",
+    )
+    if live_violations:
+        execution = _execution(plan, payload.approval_id, False, False, "rejected", "not_started", "blocked", "; ".join(live_violations), "; ".join(live_violations), {})
+        await _insert_execution(execution)
+        await _violation(plan["plan_id"], execution["execution_id"], "live_demo_gate_rejected", "high", "; ".join(live_violations), payload.model_dump())
+        await _publish("remediation.execution.failed", plan, approval or {}, execution, "; ".join(live_violations))
+        raise HTTPException(status_code=400, detail={"status": "rejected", "violations": live_violations, "execution_id": execution["execution_id"]})
 
     dry = local_dry_run(plan, kube)
     if dry["validation_status"] not in {"passed", "degraded"}:
@@ -160,6 +188,11 @@ async def _load_approval(approval_id: str) -> dict[str, Any] | None:
     if not approval_id:
         return None
     return await clickhouse.remediation_approval(approval_id)
+
+
+async def _dry_run_passed(plan_id: str) -> bool:
+    row = await clickhouse.latest_remediation_dry_run(plan_id)
+    return bool(row)
 
 
 def _execute_allowed(plan: dict[str, Any]) -> dict[str, Any]:
@@ -236,6 +269,33 @@ async def _publish(event_type: str, plan: dict[str, Any], approval: dict[str, An
         await producer.send(settings.remediation_events_topic, remediation_event(event_type, plan=plan, approval=approval, execution=execution, summary=summary), key=execution.get("execution_id") or plan.get("plan_id"))
     except Exception as exc:
         logger.warning("Failed to publish execution event type=%s error=%s", event_type, exc)
+
+
+def _live_config() -> LiveDemoConfig:
+    return LiveDemoConfig(
+        enable_dangerous_actions=settings.enable_dangerous_actions,
+        enable_real_chaos=False,
+        enable_real_remediation=settings.enable_real_remediation,
+        cascade_live_demo_mode=settings.cascade_live_demo_mode,
+        cascade_allowed_cluster_context=settings.cascade_allowed_cluster_context,
+        cascade_active_cluster_context=settings.cascade_active_cluster_context,
+        cascade_allowed_target_namespace=settings.cascade_allowed_target_namespace,
+        cascade_require_approval=settings.cascade_require_approval,
+        cascade_require_dry_run_first=settings.cascade_require_dry_run_first,
+    )
+
+
+def _live_status() -> dict[str, Any]:
+    return {
+        "dangerous_actions_enabled": settings.enable_dangerous_actions,
+        "real_remediation_enabled": settings.enable_real_remediation,
+        "live_demo_mode": settings.cascade_live_demo_mode,
+        "allowed_cluster_context": settings.cascade_allowed_cluster_context,
+        "active_cluster_context": settings.cascade_active_cluster_context or (kube.current_context() if kube else ""),
+        "allowed_target_namespace": settings.cascade_allowed_target_namespace,
+        "approval_required": settings.cascade_require_approval,
+        "dry_run_first_required": settings.cascade_require_dry_run_first,
+    }
 
 
 def _decode_plan(row: dict[str, Any]) -> dict[str, Any]:

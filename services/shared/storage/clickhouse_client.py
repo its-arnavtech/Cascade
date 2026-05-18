@@ -334,6 +334,10 @@ class ClickHouseClient:
         scores = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.resilience_scores WHERE run_id = {safe} ORDER BY computed_at DESC LIMIT 1")
         return {"run": runs[0] if runs else None, "observation": observations[0] if observations else None, "score": scores[0] if scores else None}
 
+    async def latest_chaos_dry_run(self, plan_id: str) -> dict[str, Any] | None:
+        rows = await self.fetch_json_rows(f"{self._latest_chaos_runs_query({'plan_id': plan_id})} AND dry_run = 1 AND status = 'dry_run' ORDER BY latest_state_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
     async def recent_resilience_scores(self, limit: int = 20, service: str | None = None) -> list[dict[str, Any]]:
         where = self._where({"service": service})
         return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.resilience_scores {where} ORDER BY computed_at DESC LIMIT {self._limit(limit)}")
@@ -389,6 +393,11 @@ class ClickHouseClient:
     async def remediation_execution(self, execution_id: str) -> dict[str, Any] | None:
         safe = self._quote(execution_id)
         rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_executions WHERE execution_id = {safe} ORDER BY started_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def latest_remediation_dry_run(self, plan_id: str) -> dict[str, Any] | None:
+        safe = self._quote(plan_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_executions WHERE plan_id = {safe} AND dry_run = 1 AND status = 'completed' AND validation_status IN ('passed', 'degraded') ORDER BY started_at DESC LIMIT 1")
         return rows[0] if rows else None
 
     async def insert_remediation_safety_violation(self, row: dict[str, Any]) -> int:

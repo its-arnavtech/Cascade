@@ -19,6 +19,7 @@ class ChaosPlanRequest(BaseModel):
 
 class ChaosRunRequest(BaseModel):
     plan_id: str
+    approval_id: str = ""
     approved: bool = False
     dry_run: bool = True
     observation_window_seconds: int = Field(default=60, ge=5, le=600)

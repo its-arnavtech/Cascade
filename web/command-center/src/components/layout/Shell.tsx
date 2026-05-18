@@ -81,8 +81,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
             <a className="primary-action" href="/investigations"><Plus size={18} /> Start Investigation</a>
             <span className="topbar-divider" />
             <button type="button" className="icon-button" aria-label="Notifications"><Bell size={17} /></button>
-            <div className="avatar" aria-label="Signed in operator">JD</div>
-            <ChevronDown size={16} className="muted-icon" aria-hidden="true" />
           </div>
         </header>
         {children}
