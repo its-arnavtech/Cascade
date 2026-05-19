@@ -107,6 +107,12 @@ SAFE_POST_PATHS = {
     ("remediation/recommender", "plans"),
     ("remediation/approval", "approvals"),
     ("remediation/executor", "executions/dry-run"),
+    ("remediation/executor", "executions"),
+}
+
+ROUTE_ALIASES: dict[str, tuple[str, str]] = {
+    "topology/graph": ("topology", "topology/graph"),
+    "topology/snapshot/latest": ("retrieval", "topology/snapshot/latest"),
 }
 
 
@@ -149,6 +155,41 @@ async def ready() -> dict[str, Any]:
     return {"status": "ok" if any(checks.values()) else "degraded", "service": "command-center-api", "checks": checks}
 
 
+@app.get("/api/live-demo/status")
+async def live_demo_status() -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=settings.proxy_timeout_seconds) as client:
+        chaos_policy = await _optional_json(client, settings.chaos_executor_service_url, "/safety/policy")
+        remediation_policy = await _optional_json(client, settings.remediation_executor_service_url, "/safety/policy")
+        target = await _optional_json(client, settings.topology_service_url, "/target/workload")
+        if target.get("available") is False:
+            target = await _optional_json(client, settings.topology_service_url, "/topology")
+    chaos = _policy_status(chaos_policy, "pod_kill")
+    remediation = _policy_status(remediation_policy, "restart_deployment", require_execution_enabled=True)
+    if not settings.enable_dangerous_actions:
+        reason = "Command Center proxy gate ENABLE_DANGEROUS_ACTIONS is false"
+        chaos["disabled_reasons"].append(reason)
+        remediation["disabled_reasons"].append(reason)
+    return {
+        "command_center": {"dangerous_actions_enabled": settings.enable_dangerous_actions},
+        "chaos": chaos,
+        "remediation": remediation,
+        "target": target,
+    }
+
+
+@app.get("/api/topology/graph")
+async def topology_graph_alias() -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=settings.proxy_timeout_seconds) as client:
+        graph = await _optional_json(client, settings.topology_service_url, "/topology/graph")
+        if graph.get("available") is not False:
+            return graph
+        fallback = await _optional_json(client, settings.topology_service_url, "/topology")
+        if fallback.get("available") is not False:
+            fallback.setdefault("source", "topology-service-fallback")
+            return fallback
+    return {"nodes": [], "edges": [], "dependencies": {}, "source": "empty", "message": "No topology graph found. Register a target config with dependency_edges or deploy Sock Shop."}
+
+
 @app.api_route("/api/{route:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy(route: str, request: Request) -> Response:
     if request.method not in ALLOWED_METHODS:
@@ -183,6 +224,8 @@ async def proxy(route: str, request: Request) -> Response:
 
 def _resolve_route(route: str) -> tuple[str, str]:
     cleaned = route.strip("/")
+    if cleaned in ROUTE_ALIASES:
+        return ROUTE_ALIASES[cleaned]
     for prefix in sorted(ROUTES, key=len, reverse=True):
         if cleaned == prefix:
             return prefix, ""
@@ -209,6 +252,61 @@ def _enforce_safety(prefix: str, upstream_path: str, method: str, body: bytes) -
     if prefix == "chaos/executor" and normalized == "runs":
         if payload.get("dry_run") is not True or payload.get("approved") is True:
             raise HTTPException(status_code=403, detail="Only chaos dry-run execution is exposed by default")
+    if prefix == "remediation/executor" and normalized == "executions":
+        raise HTTPException(status_code=403, detail="Real remediation execution is disabled by default")
+
+
+async def _optional_json(client: httpx.AsyncClient, base_url: str, path: str) -> dict[str, Any]:
+    try:
+        response = await client.get(base_url.rstrip("/") + path)
+        if response.status_code >= 400:
+            return {"available": False, "error": f"HTTP {response.status_code}"}
+        data = response.json()
+        return data if isinstance(data, dict) else {"available": False, "payload": data}
+    except Exception as exc:
+        return {"available": False, "error": exc.__class__.__name__}
+
+
+def _policy_status(policy: dict[str, Any], safe_action: str, *, require_execution_enabled: bool = False) -> dict[str, Any]:
+    protected = policy.get("protected") if isinstance(policy.get("protected"), dict) else {}
+    allowed_actions = policy.get("supported_kinds") or policy.get("supported_action_types") or []
+    allowed_namespaces = policy.get("allowed_namespaces", [])
+    allowed_target_namespace = policy.get("allowed_target_namespace") or (allowed_namespaces[0] if len(allowed_namespaces) == 1 else None)
+    disabled_reasons = []
+    if policy.get("available") is False:
+        disabled_reasons.append(f"Executor policy unavailable: {policy.get('error', 'unknown error')}")
+    if not bool(policy.get("live_demo_mode")):
+        disabled_reasons.append("CASCADE_LIVE_DEMO_MODE is false")
+    if not bool(policy.get("dangerous_actions_enabled")):
+        disabled_reasons.append("ENABLE_DANGEROUS_ACTIONS is false on executor")
+    if safe_action == "pod_kill" and not bool(policy.get("real_chaos_enabled")):
+        disabled_reasons.append("ENABLE_REAL_CHAOS is false")
+    if safe_action == "restart_deployment":
+        if not bool(policy.get("real_remediation_enabled")):
+            disabled_reasons.append("ENABLE_REAL_REMEDIATION is false")
+        if require_execution_enabled and not bool(policy.get("execution_enabled")):
+            disabled_reasons.append("EXECUTION_ENABLED is false")
+    if allowed_target_namespace != "cascade-targets":
+        disabled_reasons.append("Allowed target namespace is not cascade-targets")
+    if allowed_actions and safe_action not in allowed_actions:
+        disabled_reasons.append(f"{safe_action} is not in allowed actions")
+    return {
+        "available": policy.get("available", True),
+        "live_demo_mode": bool(policy.get("live_demo_mode")),
+        "dangerous_actions_enabled": bool(policy.get("dangerous_actions_enabled")),
+        "real_chaos_enabled": bool(policy.get("real_chaos_enabled")),
+        "real_remediation_enabled": bool(policy.get("real_remediation_enabled")),
+        "execution_enabled": bool(policy.get("execution_enabled")),
+        "allowed_target_namespace": allowed_target_namespace,
+        "allowed_namespaces": allowed_namespaces,
+        "allowed_services": policy.get("allowed_services", []),
+        "protected_services": protected.get("services", policy.get("protected_services", [])),
+        "denied_services": (policy.get("denied") or {}).get("services", policy.get("denied_services", [])),
+        "allowed_actions": [safe_action] if safe_action in allowed_actions else allowed_actions,
+        "approval_required": policy.get("approval_required", True),
+        "dry_run_first_required": policy.get("dry_run_first_required", True),
+        "disabled_reasons": disabled_reasons,
+    }
 
 
 def _is_safe_analysis_post(prefix: str, normalized_path: str) -> bool:

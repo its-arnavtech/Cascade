@@ -75,15 +75,33 @@ The default deployment sets `EXECUTION_ENABLED=false`, so acceptance verifies th
 
 ## Opt-in Local Live Demo
 
-Real remediation is scripts-only for public local demos:
+Real remediation is local-demo only for public demos:
 
 ```powershell
-.\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+powershell -ExecutionPolicy Bypass -File .\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
 ```
 
 The script verifies `kind-cascade`, `cascade-targets`, a safe Sock Shop service, rollback steps, post-checks, and dry-run validation before executing. The default action is `restart_deployment` for `catalogue`. It creates a plan, runs `POST /executions/dry-run`, records a non-expired approval through `approval-service`, verifies approval status, then calls `POST /executions` with the returned `approval_id` and `dry_run=false`. Rollback and post-check requirements are satisfied by the persisted plan fields. It temporarily enables `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the remediation executor, then disables them in a `finally` block.
 
 Intentionally blocked actions include namespace deletion, deployment deletion, database or broker mutation, `cascade-system` mutation, protected services, wildcard selectors, and any action without rollback/post-checks.
+
+## Command Center UI Modes
+
+Dry-run UI mode is the default. Testers can create plans, record approvals, and run dry-run validation from the browser without mutating the cluster.
+
+Local live-demo UI mode is optional and local-kind only. The UI shows `LIVE DEMO MODE` only when backend policy reports `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, `CASCADE_LIVE_DEMO_MODE=true`, and the allowed namespace is `cascade-targets`; the Command Center proxy must also be explicitly enabled. Use the UI toggle script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\enable-ui-live-demo.ps1 -ConfirmLocalKind
+```
+
+In that mode the UI exposes only `restart_deployment` for policy-allowlisted safe services, requires a confirmation checkbox, verifies rollback steps and post-checks are present, and follows the same plan -> dry-run -> approval -> approval-status -> real execution flow as the script. The backend still rejects protected services, missing approvals, missing dry-runs, missing rollback/post-checks, disallowed namespaces, denied resource kinds, and wildcard selectors. Disable the proxy flag after the local demo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\disable-ui-live-demo.ps1
+```
+
+This does not imply production readiness.
 
 ## ClickHouse Schema
 
@@ -182,7 +200,7 @@ It collects pod/service status, events, Redpanda topics, ClickHouse counts, rece
 ## Known Limitations
 
 - real execution is disabled by default.
-- live execution is local demo mode only and scripts-only.
+- live execution is local demo mode only.
 - no production authentication/RBAC yet.
 - recommendations are deterministic/template-based.
 - no arbitrary commands are accepted.

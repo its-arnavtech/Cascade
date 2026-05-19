@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
-import { dangerousActionsEnabled } from "../api/client";
-import { useChaosPlans, useChaosPolicy, useChaosRuns, useCreateChaosPlan, useDryRunChaos, useResilienceScores } from "../api/hooks";
+import { apiGet, apiPost } from "../api/client";
+import { useChaosPlans, useChaosPolicy, useChaosRuns, useCreateChaosPlan, useDryRunChaos, useLiveDemoStatus, useResilienceScores } from "../api/hooks";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { SafetyFindingsPanel, TargetWorkloadPanel } from "../components/IntelligencePanels";
@@ -13,23 +13,74 @@ export function ChaosPage() {
   const plans = useChaosPlans({ limit: 20 });
   const runs = useChaosRuns({ limit: 20 });
   const scores = useResilienceScores({ limit: 20 });
+  const liveStatus = useLiveDemoStatus();
   const create = useCreateChaosPlan();
   const dryRun = useDryRunChaos();
-  const [form, setForm] = useState({ target_service: "", target_namespace: "", experiment_kind: "pod_kill", duration_seconds: 30, objective: "Validate service resilience with dry-run planning" });
+  const [form, setForm] = useState({ target_service: "", target_namespace: "", experiment_kind: "pod_kill", duration_seconds: 10, objective: "Validate service resilience with dry-run planning" });
+  const [confirmed, setConfirmed] = useState(false);
+  const [liveResult, setLiveResult] = useState<Record<string, unknown> | undefined>();
+  const [liveError, setLiveError] = useState("");
+  const [livePending, setLivePending] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const live = liveStatus.data?.chaos;
+  const safeServices = (live?.allowed_services ?? []).filter((service) => !(live?.protected_services ?? []).includes(service));
+  const selectedService = form.target_service || safeServices[0] || "";
+  const selectedNamespace = form.target_namespace || live?.allowed_target_namespace || "cascade-targets";
+  const liveReady = Boolean(liveStatus.data?.command_center?.dangerous_actions_enabled && live?.dangerous_actions_enabled && live?.real_chaos_enabled && live?.live_demo_mode && live?.allowed_target_namespace === "cascade-targets");
 
   function submit(event: FormEvent) {
     event.preventDefault();
     create.mutate({ ...compact(form), duration_seconds: Number(form.duration_seconds), dry_run: true });
   }
 
+  async function runLiveDemo(event: FormEvent) {
+    event.preventDefault();
+    setLivePending(true);
+    setLiveError("");
+    setLiveResult(undefined);
+    try {
+      const plan = await apiPost<Record<string, unknown>>("/chaos/planner/plans", {
+        objective: `Local UI demo bounded pod kill for ${selectedService}`,
+        target_service: selectedService,
+        target_namespace: selectedNamespace,
+        experiment_kind: "pod_kill",
+        duration_seconds: Math.min(Number(form.duration_seconds) || 10, 30),
+        dry_run: true,
+      });
+      const planId = String(plan.plan_id ?? "");
+      const dry = await apiPost<Record<string, unknown>>("/chaos/executor/runs", { plan_id: planId, dry_run: true, approved: false, observation_window_seconds: 5, trigger_agent_investigation: false });
+      const approval = await apiPost<Record<string, unknown>>("/remediation/approval/approvals", { plan_id: planId, decision: "approved", approver: "local-demo-user", approver_role: "developer", reason: "Approved local UI demo real chaos after dry-run", expires_minutes: 30 });
+      const approvalId = String((approval.approval as Record<string, unknown> | undefined)?.approval_id ?? approval.approval_id ?? "");
+      let approvalStatus: Record<string, unknown> | undefined;
+      try {
+        approvalStatus = await apiGet<Record<string, unknown>>(`/remediation/approval/plans/${planId}/approval-status`);
+      } catch {
+        approvalStatus = { status: "unavailable" };
+      }
+      const run = await apiPost<Record<string, unknown>>("/chaos/executor/runs", { plan_id: planId, approval_id: approvalId, dry_run: false, approved: true, observation_window_seconds: 10, trigger_agent_investigation: false });
+      setLiveResult({ plan, dry_run: dry, approval, approval_status: approvalStatus, run });
+    } catch (error) {
+      setLiveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLivePending(false);
+    }
+  }
+
   return (
     <div className="page">
-      <div className="page-heading"><div><h2>Chaos</h2><p>Dry-run planning and dry-run execution only from the UI.</p></div></div>
-      <div className={`banner ${dangerousActionsEnabled ? "danger" : "warn"}`}><AlertTriangle size={18} />{dangerousActionsEnabled ? "LIVE DEMO MODE: use scripts for real chaos; browser actions stay dry-run." : "Real chaos execution is blocked in the UI. Use scripts for opt-in local live demos."}</div>
+      <div className="page-heading"><div><h2>Chaos</h2><p>Dry-run planning and bounded local live-demo execution when backend policy allows it.</p></div></div>
+      <div className={`banner ${liveReady ? "danger" : "warn"}`}><AlertTriangle size={18} />{liveReady ? "LIVE DEMO MODE: bounded pod_kill is available for allowlisted local target services." : "Real chaos is disabled by default. Dry-run planning is available now."}</div>
+      <section className="panel mode-panel">
+        <div>
+          <Badge tone={liveReady ? "bad" : "dry"}>{liveReady ? "Live demo enabled" : "Dry-run mode"}</Badge>
+          <p>{liveReady ? "Backend policy allows only bounded pod_kill against safe services in cascade-targets." : "To test real local actions, enable Live Demo Mode on a local kind-cascade cluster."}</p>
+        </div>
+        {!liveReady ? <code className="command-hint">powershell -ExecutionPolicy Bypass -File .\scripts\enable-ui-live-demo.ps1 -ConfirmLocalKind</code> : null}
+        {!liveReady && live?.disabled_reasons?.length ? <ul className="reason-list">{live.disabled_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}
+      </section>
       <form className="form-grid two-column" onSubmit={submit}>
         <div className="form-field"><label htmlFor="chaos-service">Target service</label><input id="chaos-service" value={form.target_service} onChange={(e) => setForm({ ...form, target_service: e.target.value })} placeholder="target service" /></div>
-        <div className="form-field"><label htmlFor="chaos-kind">Experiment kind</label><select id="chaos-kind" value={form.experiment_kind} onChange={(e) => setForm({ ...form, experiment_kind: e.target.value })}><option>pod_kill</option><option>network_delay</option><option>stress_cpu</option></select></div>
+        <div className="form-field"><label htmlFor="chaos-kind">Experiment kind</label><select id="chaos-kind" value={form.experiment_kind} onChange={(e) => setForm({ ...form, experiment_kind: e.target.value })}><option>pod_kill</option></select></div>
         <div className="form-field"><label htmlFor="chaos-namespace">Namespace</label><input id="chaos-namespace" value={form.target_namespace} onChange={(e) => setForm({ ...form, target_namespace: e.target.value })} placeholder="namespace" /></div>
         <div className="form-field"><label htmlFor="chaos-duration">Duration seconds</label><input id="chaos-duration" type="number" min={5} max={300} value={form.duration_seconds} onChange={(e) => setForm({ ...form, duration_seconds: Number(e.target.value) })} /></div>
         <div className="form-field full"><label htmlFor="chaos-objective">Objective</label><input id="chaos-objective" value={form.objective} onChange={(e) => setForm({ ...form, objective: e.target.value })} placeholder="objective" /></div>
@@ -37,10 +88,23 @@ export function ChaosPage() {
       </form>
       {create.data ? <div className="state success">Created chaos plan {String(create.data.plan_id ?? "")}</div> : null}
       {create.error ? <div className="state error">{create.error.message}</div> : null}
+      {liveReady ? (
+        <form className="form-grid two-column panel" onSubmit={runLiveDemo}>
+          <h3 className="full">Local Live Demo Chaos</h3>
+          <div className="form-field"><label htmlFor="live-chaos-service">Safe service</label><select id="live-chaos-service" value={selectedService} onChange={(e) => setForm({ ...form, target_service: e.target.value })}>{safeServices.map((service) => <option key={service}>{service}</option>)}</select></div>
+          <ReadOnlyValue label="Namespace" value={selectedNamespace} />
+          <ReadOnlyValue label="Experiment" value="pod_kill" />
+          <div className="form-field"><label htmlFor="live-chaos-duration">Duration seconds</label><input id="live-chaos-duration" type="number" min={10} max={30} value={Math.min(Number(form.duration_seconds) || 10, 30)} onChange={(e) => setForm({ ...form, duration_seconds: Number(e.target.value) })} /></div>
+          <label className="checkbox-field full"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />I understand this will mutate my local kind target namespace.</label>
+          <button type="submit" className="btn-danger full" disabled={!selectedService || !confirmed || livePending}>Run bounded live chaos</button>
+        </form>
+      ) : null}
+      <div aria-live="polite">{liveError ? <div className="state error">{liveError}</div> : null}{liveResult ? <div className="state success">Live chaos flow completed. Cleanup and recovery status are included in the run result.</div> : null}</div>
       <div className="grid two">
         <TargetWorkloadPanel />
         <StatusPanel title="Safety Policy" loading={policy.isLoading} error={policy.error}><SafetyFindingsPanel policy={policy.data} record={plans.data?.plans?.[0]} dryRun={dryRun.data} /></StatusPanel>
         <StatusPanel title="Raw Safety Policy" loading={policy.isLoading} error={policy.error}><JsonBlock value={policy.data} /></StatusPanel>
+        <StatusPanel title="Live Demo Status" loading={liveStatus.isLoading} error={liveStatus.error}><JsonBlock value={liveStatus.data} /></StatusPanel>
         <StatusPanel title="Resilience Scores" loading={scores.isLoading} error={scores.error}>
           <DataTable caption="Resilience scores" rows={scores.data?.scores ?? []} columns={[{ key: "computed_at", label: "Computed", width: "120px" }, { key: "service", label: "Service", width: "130px" }, { key: "resilience_score", label: "Score", width: "100px", render: (row) => <Badge tone={gradeTone(row.grade)}>{formatScore(row.resilience_score, row.grade)}</Badge> }, { key: "explanation", label: "Explanation", render: (row) => {
             const id = String(row.score_id ?? row.service ?? "");
@@ -56,8 +120,13 @@ export function ChaosPage() {
       <StatusPanel title="Chaos Runs" loading={runs.isLoading} error={runs.error}>
         <DataTable caption="Chaos runs" rows={runs.data?.runs ?? []} empty="No data returned." columns={[{ key: "started_at", label: "Started" }, { key: "target_service", label: "Service" }, { key: "experiment_kind", label: "Kind" }, { key: "dry_run", label: "Dry-run" }, { key: "cleanup_status", label: "Cleanup" }, { key: "status", label: "Status", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> }]} />
       </StatusPanel>
+      {liveResult ? <StatusPanel title="Latest Live Demo Result"><JsonBlock value={liveResult} /></StatusPanel> : null}
     </div>
   );
+}
+
+function ReadOnlyValue({ label, value }: { label: string; value: string }) {
+  return <div className="readonly-field"><span>{label}</span><code>{value}</code></div>;
 }
 
 function gradeTone(value: unknown): "good" | "warn" | "bad" | "neutral" {

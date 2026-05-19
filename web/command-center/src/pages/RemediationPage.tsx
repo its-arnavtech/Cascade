@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
-import { dangerousActionsEnabled } from "../api/client";
-import { useApprovals, useCreateApproval, useCreateRemediationPlan, useDryRunRemediation, useExecutions, useRemediationPlans, useRemediationPolicy } from "../api/hooks";
+import { apiGet, apiPost } from "../api/client";
+import { useApprovals, useCreateApproval, useCreateRemediationPlan, useDryRunRemediation, useExecutions, useLiveDemoStatus, useRemediationPlans, useRemediationPolicy } from "../api/hooks";
 import { AlertTriangle, Check } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { SafetyFindingsPanel, TargetWorkloadPanel } from "../components/IntelligencePanels";
@@ -13,6 +13,7 @@ export function RemediationPage() {
   const plans = useRemediationPlans({ limit: 20 });
   const approvals = useApprovals({ limit: 20 });
   const executions = useExecutions({ limit: 20 });
+  const liveStatus = useLiveDemoStatus();
   const createPlan = useCreateRemediationPlan();
   const createApproval = useCreateApproval();
   const dryRun = useDryRunRemediation();
@@ -21,6 +22,15 @@ export function RemediationPage() {
   const [dryRunForm, setDryRunForm] = useState({ plan_id: "", approval_id: "" });
   const [activeStep, setActiveStep] = useState(1);
   const [showPolicyRaw, setShowPolicyRaw] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
+  const [liveResult, setLiveResult] = useState<Record<string, unknown> | undefined>();
+  const [liveError, setLiveError] = useState("");
+  const [livePending, setLivePending] = useState(false);
+  const live = liveStatus.data?.remediation;
+  const safeServices = (live?.allowed_services ?? []).filter((service) => !(live?.protected_services ?? []).includes(service));
+  const selectedService = planForm.service || safeServices[0] || "";
+  const selectedNamespace = planForm.namespace || live?.allowed_target_namespace || "cascade-targets";
+  const liveReady = Boolean(liveStatus.data?.command_center?.dangerous_actions_enabled && live?.dangerous_actions_enabled && live?.real_remediation_enabled && live?.execution_enabled && live?.live_demo_mode && live?.allowed_target_namespace === "cascade-targets");
 
   function submitPlan(event: FormEvent) {
     event.preventDefault();
@@ -38,7 +48,7 @@ export function RemediationPage() {
     event.preventDefault();
     createApproval.mutate({ ...approvalForm, expires_minutes: Number(approvalForm.expires_minutes) }, {
       onSuccess: (data) => {
-        setDryRunForm((current) => ({ ...current, plan_id: approvalForm.plan_id, approval_id: String(data.approval_id ?? "") }));
+        setDryRunForm((current) => ({ ...current, plan_id: approvalForm.plan_id, approval_id: approvalId(data) }));
         setActiveStep(3);
       },
     });
@@ -49,10 +59,53 @@ export function RemediationPage() {
     dryRun.mutate(dryRunForm);
   }
 
+  async function runLiveDemo(event: FormEvent) {
+    event.preventDefault();
+    setLivePending(true);
+    setLiveError("");
+    setLiveResult(undefined);
+    try {
+      const planResponse = await apiPost<Record<string, unknown>>("/remediation/recommender/plans", {
+        trigger_type: "manual",
+        service: selectedService,
+        namespace: selectedNamespace,
+        objective: `Local UI demo restart for ${selectedService} after dry-run validation`,
+        preferred_action_type: "restart_deployment",
+      });
+      const planId = String(planResponse.plan_id ?? "");
+      const plan = (planResponse.plan as Record<string, unknown> | undefined) ?? {};
+      if (!arrayLength(plan.rollback_steps)) throw new Error("Plan is missing rollback steps.");
+      if (!arrayLength(plan.post_checks) && !arrayLength((plan.plan as Record<string, unknown> | undefined)?.post_checks)) throw new Error("Plan is missing post-checks.");
+      const dry = await apiPost<Record<string, unknown>>("/remediation/executor/executions/dry-run", { plan_id: planId, dry_run: true });
+      const approval = await apiPost<Record<string, unknown>>("/remediation/approval/approvals", { plan_id: planId, decision: "approved", approver: "local-demo-user", approver_role: "developer", reason: "Approved local UI demo remediation after dry-run", expires_minutes: 30 });
+      const approval_id = approvalId(approval);
+      let approvalStatus: Record<string, unknown> | undefined;
+      try {
+        approvalStatus = await apiGet<Record<string, unknown>>(`/remediation/approval/plans/${planId}/approval-status`);
+      } catch {
+        approvalStatus = { status: "unavailable" };
+      }
+      const execution = await apiPost<Record<string, unknown>>("/remediation/executor/executions", { plan_id: planId, approval_id, dry_run: false });
+      setLiveResult({ plan: planResponse, dry_run: dry, approval, approval_status: approvalStatus, execution });
+    } catch (error) {
+      setLiveError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLivePending(false);
+    }
+  }
+
   return (
     <div className="page">
-      <div className="page-heading"><div><h2>Remediation</h2><p>Plan, approval, and dry-run validation workflows backed by real services.</p></div></div>
-      <div className={`banner ${dangerousActionsEnabled ? "danger" : "warn"}`}><AlertTriangle size={18} />{dangerousActionsEnabled ? "LIVE DEMO MODE: use scripts for real remediation; browser actions stay dry-run." : "Real remediation execution is blocked in the UI. Plan, approval, and validation stay dry-run by default."}</div>
+      <div className="page-heading"><div><h2>Remediation</h2><p>Plan, approval, dry-run validation, and bounded local live-demo execution when backend policy allows it.</p></div></div>
+      <div className={`banner ${liveReady ? "danger" : "warn"}`}><AlertTriangle size={18} />{liveReady ? "LIVE DEMO MODE: bounded restart_deployment is available for allowlisted local target services." : "Real remediation is disabled by default. Plan, approval, and dry-run validation are available."}</div>
+      <section className="panel mode-panel">
+        <div>
+          <Badge tone={liveReady ? "bad" : "dry"}>{liveReady ? "Live demo enabled" : "Dry-run mode"}</Badge>
+          <p>{liveReady ? "Backend policy allows only restart_deployment against safe services in cascade-targets." : "To test real local remediation, enable Live Demo Mode on a local kind-cascade cluster."}</p>
+        </div>
+        {!liveReady ? <code className="command-hint">powershell -ExecutionPolicy Bypass -File .\scripts\enable-ui-live-demo.ps1 -ConfirmLocalKind</code> : null}
+        {!liveReady && live?.disabled_reasons?.length ? <ul className="reason-list">{live.disabled_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul> : null}
+      </section>
       <section className="wizard panel">
         <div className="step-indicator">
           {[1, 2, 3].map((step) => <button type="button" key={step} className={`${activeStep === step ? "active" : ""} ${activeStep > step ? "done" : ""}`} onClick={() => setActiveStep(step)}>{activeStep > step ? <Check size={13} /> : step}<span>{step === 1 ? "Create plan" : step === 2 ? "Record approval" : "Dry-run validation"}</span></button>)}
@@ -89,11 +142,23 @@ export function RemediationPage() {
         ) : null}
       </section>
       <div aria-live="polite">{createPlan.error ? <div className="state error">{createPlan.error.message}</div> : null}{createApproval.error ? <div className="state error">{createApproval.error.message}</div> : null}{dryRun.error ? <div className="state error">{dryRun.error.message}</div> : null}{dryRun.data ? <div className="state success">Dry-run validation recorded.</div> : null}</div>
+      {liveReady ? (
+        <form className="form-grid two-column panel" onSubmit={runLiveDemo}>
+          <h3 className="full">Local Live Demo Remediation</h3>
+          <div className="form-field"><label htmlFor="live-remediation-service">Safe service</label><select id="live-remediation-service" value={selectedService} onChange={(e) => setPlanForm({ ...planForm, service: e.target.value })}>{safeServices.map((service) => <option key={service}>{service}</option>)}</select></div>
+          <ReadOnlyValue label="Namespace" value={selectedNamespace} />
+          <ReadOnlyValue label="Action" value="restart_deployment" />
+          <label className="checkbox-field full"><input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />I understand this will mutate my local kind target namespace.</label>
+          <button type="submit" className="btn-danger full" disabled={!selectedService || !confirmed || livePending}>Run bounded live remediation</button>
+        </form>
+      ) : null}
+      <div aria-live="polite">{liveError ? <div className="state error">{liveError}</div> : null}{liveResult ? <div className="state success">Live remediation flow completed. Post-check and execution details are included in the result.</div> : null}</div>
       <div className="grid two">
         <TargetWorkloadPanel />
         <StatusPanel title="Safety Findings" loading={policy.isLoading || plans.isLoading} error={policy.error ?? plans.error}><SafetyFindingsPanel policy={policy.data} record={plans.data?.plans?.[0]} dryRun={dryRun.data?.execution ?? dryRun.data} /></StatusPanel>
       </div>
       <StatusPanel title="Safety Policy" loading={policy.isLoading} error={policy.error}>{showPolicyRaw ? <JsonBlock value={policy.data} /> : <PolicySummary value={policy.data} />}<button type="button" className="link-button" onClick={() => setShowPolicyRaw((value) => !value)}>{showPolicyRaw ? "Hide raw policy" : "View raw policy"}</button></StatusPanel>
+      <StatusPanel title="Live Demo Status" loading={liveStatus.isLoading} error={liveStatus.error}><JsonBlock value={liveStatus.data} /></StatusPanel>
       <StatusPanel title="Remediation Plans" loading={plans.isLoading} error={plans.error}>
         <DataTable caption="Remediation plans" rows={plans.data?.plans ?? []} empty="No data returned." columns={[{ key: "created_at", label: "Created", width: "130px" }, { key: "plan_id", label: "Plan", width: "160px" }, { key: "service", label: "Service", width: "140px" }, { key: "action_type", label: "Action", width: "140px" }, { key: "confidence", label: "Confidence", width: "100px" }, { key: "safety_findings", label: "Safety", render: (row) => formatList(row.safety_findings) }, { key: "rollback_steps", label: "Rollback", render: (row) => formatList(row.rollback_steps) }, { key: "actions", label: "Actions", width: "190px", align: "right", render: (row) => <div className="table-actions"><button type="button" className="compact" onClick={() => { const id = String(row.plan_id ?? ""); setApprovalForm((current) => ({ ...current, plan_id: id })); setActiveStep(2); }}>Approve -&gt;</button><button type="button" className="btn-dry compact" onClick={() => { const id = String(row.plan_id ?? ""); setDryRunForm((current) => ({ ...current, plan_id: id })); setActiveStep(3); }}>Validate -&gt;</button></div> }]} />
       </StatusPanel>
@@ -101,6 +166,7 @@ export function RemediationPage() {
         <StatusPanel title="Approvals" loading={approvals.isLoading} error={approvals.error}><DataTable caption="Approvals" rows={approvals.data?.approvals ?? []} empty="No data returned." columns={[{ key: "decided_at", label: "Decided" }, { key: "plan_id", label: "Plan" }, { key: "decision", label: "Decision", render: (row) => <Badge tone={row.decision === "approved" ? "good" : "bad"}>{String(row.decision ?? "-")}</Badge> }, { key: "approver", label: "Approver" }, { key: "reason", label: "Reason" }]} /></StatusPanel>
         <StatusPanel title="Executions / Dry-runs" loading={executions.isLoading} error={executions.error}><DataTable caption="Executions and dry-runs" rows={executions.data?.executions ?? []} empty="No data returned." columns={[{ key: "started_at", label: "Started" }, { key: "plan_id", label: "Plan" }, { key: "dry_run", label: "Dry-run" }, { key: "executed", label: "Executed" }, { key: "rollback_available", label: "Rollback" }, { key: "validation_status", label: "Validation", render: (row) => <Badge tone={statusTone(row.validation_status)}>{String(row.validation_status ?? "-")}</Badge> }, { key: "output_summary", label: "Dry-run result" }]} /></StatusPanel>
       </div>
+      {liveResult ? <StatusPanel title="Latest Live Demo Result"><JsonBlock value={liveResult} /></StatusPanel> : null}
     </div>
   );
 }
@@ -126,6 +192,14 @@ function formatList(value: unknown) {
 
 function compact(value: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== ""));
+}
+
+function approvalId(value: Record<string, unknown>) {
+  return String((value.approval as Record<string, unknown> | undefined)?.approval_id ?? value.approval_id ?? "");
+}
+
+function arrayLength(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 function statusTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" {

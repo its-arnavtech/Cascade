@@ -311,9 +311,36 @@ Cascade is safety-first by default:
 
 Do not commit secrets, tokens, kubeconfigs, database credentials, private keys, generated `.env` files, or real API keys. `.env.example` is for placeholders only.
 
+## Command Center UI Modes
+
+Dry-run UI mode is the default and is safe for normal testers. The Command Center lets testers inspect topology, telemetry trends, chaos plans, remediation plans, approvals, and dry-run validation without mutating the cluster.
+
+Local live-demo UI mode is optional and local-kind only. It requires executor live-demo flags and the Command Center proxy dangerous-action flag before the browser exposes bounded real actions. Even then, the backend remains the final enforcement layer: approvals, dry-run-first checks, rollback and post-check requirements, protected-service checks, namespace allowlists, and wildcard-selector rejection still run server-side. The UI only exposes `pod_kill` for chaos and `restart_deployment` for remediation against allowlisted `cascade-targets` services.
+
+To exercise live mode through scripts:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+powershell -ExecutionPolicy Bypass -File .\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
+```
+
+For a browser live-demo path, use the explicit UI toggle script. It verifies the local `kind-cascade` context and `cascade-targets` namespace, enables only the required executor and proxy flags, waits for rollouts, and prints `/api/live-demo/status`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\enable-ui-live-demo.ps1 -ConfirmLocalKind
+```
+
+Disable UI live-demo mode immediately after a local demo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\disable-ui-live-demo.ps1
+```
+
+This does not imply production readiness.
+
 ## Testing Real Chaos And Remediation Locally
 
-Dry-run is the default. Real actions are available only through opt-in local demo scripts, not through normal deployment or the Command Center UI.
+Dry-run is the default. Real actions are available only through opt-in local demo scripts or local live-demo UI mode, not through normal deployment.
 
 Prerequisites:
 
@@ -344,8 +371,7 @@ Disable live mode and clean up:
 
 ```powershell
 kubectl -n cascade-targets delete podchaos,networkchaos,stresschaos -l cascade.io/phase=phase7 --ignore-not-found=true
-kubectl -n cascade-system set env deployment/chaos-executor-service ENABLE_DANGEROUS_ACTIONS=false ENABLE_REAL_CHAOS=false CASCADE_LIVE_DEMO_MODE=false CASCADE_ACTIVE_CLUSTER_CONTEXT-
-kubectl -n cascade-system set env deployment/remediation-executor-service EXECUTION_ENABLED=false ENABLE_DANGEROUS_ACTIONS=false ENABLE_REAL_REMEDIATION=false CASCADE_LIVE_DEMO_MODE=false CASCADE_ACTIVE_CLUSTER_CONTEXT-
+powershell -ExecutionPolicy Bypass -File .\scripts\disable-ui-live-demo.ps1
 ```
 
 This is local demo mode only. It is opt-in, bounded, policy-gated, approval-required, and dry-run-first; it is not production safety guidance.

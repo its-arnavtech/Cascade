@@ -1,4 +1,5 @@
-import { AlertCircle, GitBranch, Network, ShieldCheck, Target } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertCircle, ArrowRight, GitBranch, Network, ShieldCheck, Target } from "lucide-react";
 import { useBlastRadius, useTargetWorkload, useTopologySnapshot } from "../api/hooks";
 import type { BlastRadius, CausalReport, JsonRecord, TargetWorkload, TopologyGraph } from "../api/types";
 import { Badge } from "./Badge";
@@ -23,15 +24,15 @@ export function TargetWorkloadPanel() {
             </div>
             <Badge tone="info">{graph.services.length} services</Badge>
           </div>
-          <div className="intel-facts">
-            <Fact label="Frontend" value={target.frontend_service} />
-            <Fact label="Dependencies" value={String(graph.edges.length || "No data returned.")} />
-            <Fact label="Snapshot" value={String(target.snapshot_id ?? "No data returned.")} />
+          <div className="intel-facts target-facts">
+            <Fact label="Frontend" value={target.frontend_service || "No frontend declared"} identifier />
+            <Fact label="Dependencies" value={graph.edges.length ? String(graph.edges.length) : "No dependency edges"} />
+            <Fact label="Snapshot" value={target.snapshot_id ?? "No snapshot yet"} identifier />
           </div>
           <ServiceChips services={graph.services} protectedServices={target.protected_services} />
         </div>
       ) : (
-        <div className="state">No target topology returned. Validate and register a target config, then verify telemetry.</div>
+        <div className="state state-compact"><strong>No snapshot yet</strong><span>Run accept-telemetry or wait for observation-service to publish target topology.</span></div>
       )}
     </StatusPanel>
   );
@@ -156,18 +157,41 @@ export function SafetyFindingsPanel({ policy, record, dryRun }: { policy?: unkno
 
 export function TopologyGraphView({ value }: { value: unknown }) {
   const graph = normalizeTopology(value);
-  if (!graph.services.length) return <div className="state">No dependency graph returned. Define dependency_edges in the active target config.</div>;
+  const [selected, setSelected] = useState(graph.services[0] ?? "");
+  const serviceSet = useMemo(() => new Set(graph.services), [graph.services]);
+  const active = serviceSet.has(selected) ? selected : graph.services[0] ?? "";
+  const downstream = active ? graph.dependencies[active] ?? [] : [];
+  const upstream = active ? graph.edges.filter(([, target]) => target === active).map(([source]) => source).sort() : [];
+
+  if (!graph.services.length) return <div className="state">No topology graph found. Register a target config with dependency_edges or deploy Sock Shop.</div>;
   return (
-    <div className="graph-list">
-      {graph.services.map((service) => {
-        const children = graph.dependencies[service] ?? [];
-        return (
-          <div className="graph-row" key={service}>
-            <strong>{service}</strong>
-            <span>{children.length ? children.join(", ") : "No downstream data returned."}</span>
-          </div>
-        );
-      })}
+    <div className="dependency-map">
+      <div className="dependency-summary">
+        <Badge tone="info">{graph.services.length} nodes</Badge>
+        <Badge tone={graph.edges.length ? "teal" : "neutral"}>{graph.edges.length} edges</Badge>
+        {graph.snapshot_id ? <code>{graph.snapshot_id}</code> : null}
+      </div>
+      <div className="dependency-grid" role="list" aria-label="Topology dependency map">
+        {graph.services.map((service) => {
+          const children = graph.dependencies[service] ?? [];
+          const isSelected = service === active;
+          return (
+            <button type="button" className={`dependency-node ${isSelected ? "selected" : ""}`} key={service} onClick={() => setSelected(service)} role="listitem">
+              <span className="dependency-node-name">{service}</span>
+              <span className="dependency-node-meta">{children.length ? `${children.length} downstream` : "Leaf service"}</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="dependency-detail">
+        <div>
+          <span>Selected service</span>
+          <strong>{active}</strong>
+        </div>
+        <DependencyChips label="Upstream" values={upstream} />
+        <ArrowRight size={18} aria-hidden="true" />
+        <DependencyChips label="Downstream" values={downstream} />
+      </div>
     </div>
   );
 }
@@ -196,7 +220,13 @@ export function normalizeTopology(value: unknown): { services: string[]; edges: 
     const id = stringValue(item.id ?? item.name ?? item.service);
     if (id) services.add(id);
   }
-  return { services: [...services].sort(), edges, dependencies: rawDependencies, snapshot_id: stringValue(record.snapshot_id), captured_at: stringValue(record.captured_at) };
+  const dependencies = { ...rawDependencies };
+  for (const [source, target] of edges) {
+    dependencies[source] = [...(dependencies[source] ?? []), target];
+    dependencies[target] = dependencies[target] ?? [];
+  }
+  for (const service of services) dependencies[service] = [...new Set(dependencies[service] ?? [])].sort();
+  return { services: [...services].sort(), edges, dependencies, snapshot_id: stringValue(record.snapshot_id), captured_at: stringValue(record.captured_at) };
 }
 
 function normalizeTarget(value: unknown, graph: ReturnType<typeof normalizeTopology>): TargetWorkload & { snapshot_id?: string } {
@@ -246,19 +276,28 @@ function FlowList({ label, values }: { label: string; values: string[] }) {
 }
 
 function ServiceChips({ services, protectedServices = [] }: { services: string[]; protectedServices?: string[] }) {
-  if (!services.length) return <div className="state">No data returned.</div>;
+  if (!services.length) return <div className="state state-compact"><strong>No services returned</strong><span>Register a target config with service definitions.</span></div>;
   const protectedSet = new Set(protectedServices);
   return (
     <div className="service-chip-grid">
       {services.map((service) => (
-        <span key={service} className={protectedSet.has(service) ? "protected" : ""}>{service}</span>
+        <span key={service} className={protectedSet.has(service) ? "protected identifier" : "identifier"}>{service}</span>
       ))}
     </div>
   );
 }
 
-function Fact({ label, value }: { label: string; value?: unknown }) {
-  return <div><span>{label}</span><strong>{formatInline(value)}</strong></div>;
+function Fact({ label, value, identifier = false }: { label: string; value?: unknown; identifier?: boolean }) {
+  return <div><span>{label}</span><strong className={identifier ? "identifier" : undefined}>{formatInline(value)}</strong></div>;
+}
+
+function DependencyChips({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="dependency-chip-group">
+      <span>{label}</span>
+      <div>{values.length ? values.map((value) => <code key={value}>{value}</code>) : <em>None returned</em>}</div>
+    </div>
+  );
 }
 
 function formatInline(value: unknown): string {
