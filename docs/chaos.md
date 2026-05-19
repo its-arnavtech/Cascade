@@ -2,7 +2,7 @@
 
 Chaos engineering lets Cascade safely plan, execute, observe, and score controlled Chaos Mesh experiments against the Sock Shop target namespace.
 
-Chaos engineering is dry-run by default. Real Chaos Mesh execution is available only through the opt-in local demo script and requires live-demo flags, local kind context validation, approval, and a prior successful dry-run.
+Chaos engineering is dry-run by default. Real Chaos Mesh execution is available only through the opt-in local demo script or local live-demo Command Center mode and requires live-demo flags, local kind context validation, approval, and a prior successful dry-run.
 
 ## Architecture
 
@@ -186,10 +186,26 @@ Opt-in local live demo:
 ```powershell
 .\scripts\install-chaos-mesh.ps1 -ConfirmLocalKind
 .\scripts\verify-chaos-mesh.ps1
-.\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
+powershell -ExecutionPolicy Bypass -File .\scripts\demo-real-chaos.ps1 -ConfirmLocalKind
 ```
 
-The live demo performs a bounded one-pod `PodChaos` against an allowlisted Sock Shop service, `catalogue` by default, for 10-30 seconds. It temporarily enables `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_CHAOS=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the chaos executor only, creates the plan, runs executor dry-run validation first, records an approved local-demo decision through the existing approval service, then executes the real run with both the returned `approval_id` and `approved=true`. The script cleans up Cascade-managed Chaos Mesh resources and disables the live flags in a `finally` block. It does not target `cascade-system`, databases, brokers, session stores, or wildcard selectors.
+The live demo performs a bounded one-pod `PodChaos` against an allowlisted Sock Shop service, `catalogue` by default, for 10-30 seconds. It temporarily enables `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_CHAOS=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the chaos executor, creates the plan, runs executor dry-run validation first, records an approved local-demo decision through the existing approval service, then executes the real run with both the returned `approval_id` and `approved=true`. The script cleans up Cascade-managed Chaos Mesh resources and disables the live flags in a `finally` block. It does not target `cascade-system`, databases, brokers, queues, auth stores, session stores, or wildcard selectors.
+
+## Command Center UI Modes
+
+Dry-run UI mode is the default. Testers can create bounded dry-run `pod_kill` plans and run executor dry-runs without mutating the cluster.
+
+Local live-demo UI mode is optional and local-kind only. The UI shows `LIVE DEMO MODE` only when backend policy reports `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_CHAOS=true`, `CASCADE_LIVE_DEMO_MODE=true`, and the allowed namespace is `cascade-targets`; the Command Center proxy must also be explicitly enabled. Use the UI toggle script:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\enable-ui-live-demo.ps1 -ConfirmLocalKind
+```
+
+In that mode the UI exposes only bounded `pod_kill` against policy-allowlisted safe services, requires a confirmation checkbox, and follows the same plan -> dry-run -> approval -> approval-status -> real run flow as the script. The backend still rejects protected services, missing approval, missing dry-run, disallowed namespaces, and wildcard selectors. Disable the proxy flag after the local demo:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\disable-ui-live-demo.ps1
+```
 
 Debug:
 
@@ -207,10 +223,10 @@ Use `-ClearChaosTables` only when intentionally clearing local Chaos engineering
 
 ## Known Limitations
 
-- Real execution is scripts-only local demo mode and remains disabled by default.
+- Real execution is local demo mode only and remains disabled by default.
 - No remediation execution.
 - No autonomous agent-triggered chaos by default.
-- No browser-based real execution path.
+- Browser-based real execution is limited to local live-demo mode and the bounded `pod_kill` flow.
 - Network and stress experiments are local-limited and optional.
 - Resilience scores are baseline heuristics.
 - Dry-run mode is available for safe validation.

@@ -8,12 +8,14 @@ import type {
   CountMap,
   BlastRadius,
   CausalReport,
+  ExperimentEvent,
   FeatureWindow,
   HealthCheck,
   Incident,
   Investigation,
   JsonRecord,
   KnowledgeResult,
+  LiveDemoStatus,
   PolicyAuditRecord,
   RemediationExecution,
   RemediationPlan,
@@ -31,6 +33,10 @@ export function useCounts() {
 
 export function useTelemetry(filters: JsonRecord = {}) {
   return useQuery({ queryKey: ["telemetry", filters], queryFn: () => apiGet<{ events: TelemetryEvent[]; count: number }>("/retrieval/events/recent", filters), ...poll });
+}
+
+export function useExperiments(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["experiments", filters], queryFn: () => apiGet<{ experiments: ExperimentEvent[]; count: number }>("/retrieval/experiments/recent", filters), ...poll });
 }
 
 export function useFeatureWindows(filters: JsonRecord = {}) {
@@ -66,7 +72,7 @@ export function useKnowledgeContext() {
 }
 
 export function useTopologyGraph() {
-  return useQuery({ queryKey: ["topology-graph"], queryFn: () => apiGet<TopologyGraph>("/topology/topology/graph"), ...poll });
+  return useQuery({ queryKey: ["topology-graph"], queryFn: () => apiGet<TopologyGraph>("/topology/graph"), ...poll });
 }
 
 export function useTopologySnapshot() {
@@ -157,6 +163,10 @@ export function useChaosPolicy() {
   return useQuery({ queryKey: ["chaos-policy"], queryFn: () => apiGet<JsonRecord>("/chaos/executor/safety/policy"), ...poll });
 }
 
+export function useLiveDemoStatus() {
+  return useQuery({ queryKey: ["live-demo-status"], queryFn: () => apiGet<LiveDemoStatus>("/live-demo/status"), ...poll });
+}
+
 export function useCreateChaosPlan() {
   const qc = useQueryClient();
   return useMutation({
@@ -169,6 +179,14 @@ export function useDryRunChaos() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: JsonRecord) => apiPost<JsonRecord>("/chaos/executor/runs", { ...body, dry_run: true, approved: false }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chaos-runs"] }),
+  });
+}
+
+export function useExecuteChaos() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: JsonRecord) => apiPost<JsonRecord>("/chaos/executor/runs", { ...body, dry_run: false, approved: true }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["chaos-runs"] }),
   });
 }
@@ -205,10 +223,27 @@ export function useCreateApproval() {
   });
 }
 
+export function useApprovalStatus(planId?: string) {
+  return useQuery({
+    queryKey: ["approval-status", planId],
+    enabled: Boolean(planId),
+    queryFn: () => apiGet<JsonRecord>(`/remediation/approval/plans/${planId}/approval-status`),
+    ...poll,
+  });
+}
+
 export function useDryRunRemediation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: JsonRecord) => apiPost<JsonRecord>("/remediation/executor/executions/dry-run", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["executions"] }),
+  });
+}
+
+export function useExecuteRemediation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: JsonRecord) => apiPost<JsonRecord>("/remediation/executor/executions", { ...body, dry_run: false }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["executions"] }),
   });
 }

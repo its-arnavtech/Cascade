@@ -79,6 +79,18 @@ export interface Investigation extends JsonRecord {
   evidence_refs?: unknown;
 }
 
+export interface ExperimentEvent extends JsonRecord {
+  experiment_id?: string;
+  event_id?: string;
+  timestamp?: string;
+  started_at?: string;
+  completed_at?: string;
+  service?: string;
+  target_service?: string;
+  event_type?: string;
+  status?: string;
+}
+
 export interface TargetWorkload extends JsonRecord {
   name?: string;
   namespace?: string;
@@ -254,6 +266,29 @@ export interface RemediationExecution extends JsonRecord {
   execution_status?: string;
   output?: unknown;
   safety?: JsonRecord;
+}
+
+export interface LivePolicyStatus extends JsonRecord {
+  available?: boolean;
+  live_demo_mode?: boolean;
+  dangerous_actions_enabled?: boolean;
+  real_chaos_enabled?: boolean;
+  real_remediation_enabled?: boolean;
+  execution_enabled?: boolean;
+  allowed_target_namespace?: string;
+  allowed_namespaces?: string[];
+  allowed_services?: string[];
+  protected_services?: string[];
+  denied_services?: string[];
+  allowed_actions?: string[];
+  disabled_reasons?: string[];
+}
+
+export interface LiveDemoStatus extends JsonRecord {
+  command_center?: { dangerous_actions_enabled?: boolean };
+  chaos?: LivePolicyStatus;
+  remediation?: LivePolicyStatus;
+  target?: TargetWorkload;
 }
 
 export interface HealthCheck {
