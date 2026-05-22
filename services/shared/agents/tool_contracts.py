@@ -33,6 +33,8 @@ TOOL_REGISTRY: dict[str, ToolContract] = {
     "get_service_impact": ToolContract("get_service_impact", "Estimate topology blast radius.", "topology-service", "POST", "/topology/impact"),
     "get_latest_blast_radius": ToolContract("get_latest_blast_radius", "Fetch the latest topology blast-radius estimate for a target service.", "topology-service", "POST", "/topology/blast-radius"),
     "get_causal_report": ToolContract("get_causal_report", "Fetch a statistical causality report without creating a new analysis.", "retrieval-service", "GET", "/causality/reports/recent"),
+    "get_recent_rca_reports": ToolContract("get_recent_rca_reports", "Fetch recent RCA evidence bundles.", "retrieval-service", "GET", "/rca/recent"),
+    "get_rca_report": ToolContract("get_rca_report", "Fetch one RCA evidence bundle.", "retrieval-service", "GET", "/rca/{report_id}"),
     "get_target_workload": ToolContract("get_target_workload", "Resolve the canonical active target workload and service catalog.", "topology-service", "GET", "/target/workload"),
     "search_similar_incidents": ToolContract("search_similar_incidents", "Search incident memory.", "retrieval-service", "POST", "/memory/search"),
     "generate_incident_timeline": ToolContract("generate_incident_timeline", "Generate incident timeline template.", "incident-timeline-service", "POST", "/timeline"),
@@ -45,7 +47,12 @@ TOOL_REGISTRY: dict[str, ToolContract] = {
     "get_recent_remediation_plans": ToolContract("get_recent_remediation_plans", "Fetch recent Phase 8 remediation plans.", "remediation-recommender-service", "GET", "/plans"),
     "get_remediation_plan": ToolContract("get_remediation_plan", "Fetch one Phase 8 remediation plan.", "remediation-recommender-service", "GET", "/plans/{plan_id}"),
     "get_recent_remediation_executions": ToolContract("get_recent_remediation_executions", "Fetch recent Phase 8 remediation dry-run/execution records.", "remediation-executor-service", "GET", "/executions"),
+    "get_recent_remediation_verifications": ToolContract("get_recent_remediation_verifications", "Fetch recent post-remediation verification results.", "remediation-executor-service", "GET", "/verifications"),
+    "get_remediation_verification": ToolContract("get_remediation_verification", "Fetch one post-remediation verification result.", "remediation-executor-service", "GET", "/verifications/{verification_id}"),
+    "get_recent_remediation_rollback_plans": ToolContract("get_recent_remediation_rollback_plans", "Fetch recent remediation rollback plans.", "remediation-executor-service", "GET", "/rollback-plans"),
+    "get_remediation_rollback_plan": ToolContract("get_remediation_rollback_plan", "Fetch one remediation rollback plan.", "remediation-executor-service", "GET", "/rollback-plans/{rollback_plan_id}"),
     "get_remediation_safety_policy": ToolContract("get_remediation_safety_policy", "Fetch active remediation safety policy.", "remediation-executor-service", "GET", "/safety/policy"),
+    "evaluate_remediation_policy": ToolContract("evaluate_remediation_policy", "Evaluate a proposed remediation action against policy without mutation.", "remediation-recommender-service", "POST", "/policy/evaluate"),
 }
 
 

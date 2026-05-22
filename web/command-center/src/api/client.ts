@@ -17,6 +17,7 @@ export class ApiError extends Error {
 export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
 export const refreshIntervalMs = Number(import.meta.env.VITE_REFRESH_INTERVAL_MS || 10_000);
 export const dangerousActionsEnabled = import.meta.env.VITE_ENABLE_DANGEROUS_ACTIONS === "true";
+const configuredApiToken = import.meta.env.VITE_CASCADE_API_TOKEN || "";
 
 export async function apiGet<T>(path: string, params?: JsonRecord): Promise<T> {
   return request<T>(path, { method: "GET", params });
@@ -37,9 +38,14 @@ async function request<T>(path: string, options: { method: "GET" | "POST"; param
   }
 
   try {
+    const headers: Record<string, string> = options.body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" };
+    const token = cascadeApiToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
     const response = await fetch(url, {
       method: options.method,
-      headers: options.body === undefined ? { Accept: "application/json" } : { Accept: "application/json", "Content-Type": "application/json" },
+      headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal,
     });
@@ -56,6 +62,14 @@ async function request<T>(path: string, options: { method: "GET" | "POST"; param
     throw error;
   } finally {
     window.clearTimeout(timeout);
+  }
+}
+
+function cascadeApiToken(): string {
+  try {
+    return window.localStorage.getItem("cascade.apiToken") || configuredApiToken;
+  } catch {
+    return configuredApiToken;
   }
 }
 

@@ -15,8 +15,16 @@ FEATURE_KEYS = [
     "max_memory",
     "avg_latency_ms",
     "max_latency_ms",
+    "latency_p50_ms",
+    "latency_p95_ms",
+    "latency_p99_ms",
+    "request_rate",
     "error_rate",
     "restart_rate",
     "unhealthy_rate",
+    "readiness_rate",
+    "availability_rate",
+    "warning_event_count",
+    "missing_metric_count",
+    "dependency_unhealthy_count",
 ]
-

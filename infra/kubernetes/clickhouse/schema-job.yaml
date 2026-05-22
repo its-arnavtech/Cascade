@@ -26,6 +26,34 @@ spec:
               until clickhouse-client --host clickhouse --query "SELECT 1"; do sleep 3; done
               clickhouse-client --host clickhouse --multiquery <<'SQL'
               CREATE DATABASE IF NOT EXISTS cascade;
+              CREATE TABLE IF NOT EXISTS cascade.audit_events (
+                  event_id String,
+                  timestamp DateTime64(3),
+                  event_type String,
+                  subsystem String,
+                  severity String,
+                  run_id String,
+                  correlation_id String,
+                  service String,
+                  namespace String,
+                  actor String,
+                  action String,
+                  decision String,
+                  status String,
+                  risk_level String,
+                  policy_decision_id String,
+                  remediation_execution_id String,
+                  verification_id String,
+                  rollback_plan_id String,
+                  autopilot_run_id String,
+                  chaos_experiment_id String,
+                  campaign_id String,
+                  rca_report_id String,
+                  topology_node_or_edge_id String,
+                  evidence_summary String,
+                  raw_payload_json String,
+                  user_safe_message String
+              ) ENGINE = ReplacingMergeTree(timestamp) ORDER BY (timestamp, subsystem, service, event_id);
               CREATE TABLE IF NOT EXISTS cascade.telemetry_events (
                   event_id String,
                   observed_at DateTime64(3),
@@ -115,9 +143,18 @@ spec:
                   max_memory Float64,
                   avg_latency_ms Float64,
                   max_latency_ms Float64,
+                  latency_p50_ms Float64,
+                  latency_p95_ms Float64,
+                  latency_p99_ms Float64,
+                  request_rate Float64,
                   error_rate Float64,
                   restart_rate Float64,
                   unhealthy_rate Float64,
+                  readiness_rate Float64,
+                  availability_rate Float64,
+                  warning_event_count Float64,
+                  missing_metric_count UInt64,
+                  dependency_unhealthy_count UInt64,
                   feature_vector_json String,
                   source_query_hash String
               ) ENGINE = MergeTree ORDER BY (service, window_start, window_id);
@@ -184,6 +221,22 @@ spec:
                   candidate_json String
               ) ENGINE = ReplacingMergeTree(generated_at)
               ORDER BY (report_id, rank, candidate_id);
+              CREATE TABLE IF NOT EXISTS cascade.rca_reports (
+                  report_id String,
+                  generated_at DateTime64(3),
+                  target_service String,
+                  likely_root_cause_service String,
+                  status String,
+                  confidence_score Float64,
+                  affected_services_json String,
+                  related_chaos_json String,
+                  evidence_json String,
+                  timeline_json String,
+                  limitations_json String,
+                  explanation String,
+                  report_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (generated_at, report_id);
               CREATE TABLE IF NOT EXISTS cascade.model_runs (
                   run_id String,
                   started_at DateTime64(3),
@@ -434,6 +487,59 @@ spec:
                   findings_json String,
                   policy_json String
               ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_campaigns (
+                  campaign_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  status String,
+                  name String,
+                  target_namespace String,
+                  allowed_services_json String,
+                  experiment_templates_json String,
+                  schedule_json String,
+                  max_experiments_per_run UInt64,
+                  blast_radius_limit Float64,
+                  cooldown_seconds UInt64,
+                  dry_run UInt8,
+                  local_demo_execution_enabled UInt8,
+                  stop_conditions_json String,
+                  campaign_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (updated_at, campaign_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_campaign_runs (
+                  run_id String,
+                  campaign_id String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  dry_run UInt8,
+                  requested_by String,
+                  experiments_attempted UInt64,
+                  experiments_succeeded UInt64,
+                  experiments_blocked UInt64,
+                  experiments_failed UInt64,
+                  services_json String,
+                  report_json String,
+                  error_message String,
+                  run_json String
+              ) ENGINE = ReplacingMergeTree(started_at) ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_campaign_steps (
+                  step_id String,
+                  run_id String,
+                  campaign_id String,
+                  created_at DateTime64(3),
+                  sequence UInt64,
+                  status String,
+                  plan_id String,
+                  chaos_run_id String,
+                  experiment_kind String,
+                  target_service String,
+                  blocked_reason String,
+                  evidence_before_json String,
+                  evidence_after_json String,
+                  result_json String,
+                  cleanup_status String,
+                  step_json String
+              ) ENGINE = MergeTree ORDER BY (run_id, sequence, created_at, step_id);
               CREATE TABLE IF NOT EXISTS cascade.remediation_plans (
                   plan_id String,
                   created_at DateTime64(3),
@@ -491,6 +597,46 @@ spec:
                   error_message String,
                   execution_json String
               ) ENGINE = ReplacingMergeTree(started_at) ORDER BY (started_at, execution_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_rollback_plans (
+                  rollback_plan_id String,
+                  execution_id String,
+                  plan_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  action_type String,
+                  namespace String,
+                  service String,
+                  rollback_type String,
+                  available UInt8,
+                  auto_executable UInt8,
+                  status String,
+                  reason String,
+                  snapshot_json String,
+                  actions_json String,
+                  result_json String,
+                  rollback_plan_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (created_at, rollback_plan_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_verification_results (
+                  verification_id String,
+                  execution_id String,
+                  plan_id String,
+                  rollback_plan_id String,
+                  created_at DateTime64(3),
+                  completed_at DateTime64(3),
+                  action_type String,
+                  namespace String,
+                  service String,
+                  status String,
+                  evidence_quality String,
+                  rollback_status String,
+                  summary String,
+                  before_json String,
+                  after_json String,
+                  comparisons_json String,
+                  limitations_json String,
+                  rollback_json String,
+                  verification_json String
+              ) ENGINE = ReplacingMergeTree(completed_at) ORDER BY (completed_at, verification_id);
               CREATE TABLE IF NOT EXISTS cascade.remediation_safety_violations (
                   violation_id String,
                   created_at DateTime64(3),
@@ -514,4 +660,84 @@ spec:
                   findings_json String,
                   policy_json String
               ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
+              CREATE TABLE IF NOT EXISTS cascade.autopilot_runs (
+                  run_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  final_result String,
+                  mode String,
+                  trigger_type String,
+                  trigger_id String,
+                  service String,
+                  namespace String,
+                  objective String,
+                  anomaly_id String,
+                  investigation_id String,
+                  remediation_plan_id String,
+                  approval_id String,
+                  dry_run_execution_id String,
+                  execution_id String,
+                  proposed_action String,
+                  error_message String,
+                  evidence_json String,
+                  recommendation_json String,
+                  action_json String,
+                  verification_json String,
+                  run_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (created_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.autopilot_steps (
+                  step_id String,
+                  run_id String,
+                  created_at DateTime64(3),
+                  state String,
+                  status String,
+                  summary String,
+                  input_json String,
+                  output_json String,
+                  error_message String,
+                  step_json String
+              ) ENGINE = MergeTree ORDER BY (run_id, created_at, step_id);
+              CREATE TABLE IF NOT EXISTS cascade.scheduler_items (
+                  item_id String,
+                  item_type String,
+                  target_id String,
+                  name String,
+                  schedule_json String,
+                  enabled UInt8,
+                  paused UInt8,
+                  mode String,
+                  next_run_at Nullable(DateTime64(3)),
+                  last_run_at Nullable(DateTime64(3)),
+                  cooldown_seconds UInt64,
+                  max_runs_per_window UInt64,
+                  window_seconds UInt64,
+                  failure_count UInt64,
+                  status String,
+                  payload_json String,
+                  updated_at DateTime64(3)
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (item_id);
+              CREATE TABLE IF NOT EXISTS cascade.scheduler_decisions (
+                  decision_id String,
+                  item_id String,
+                  item_type String,
+                  target_id String,
+                  evaluated_at DateTime64(3),
+                  due_at Nullable(DateTime64(3)),
+                  status String,
+                  action String,
+                  reason String,
+                  idempotency_key String,
+                  run_id String,
+                  dry_run UInt8,
+                  skipped_missed_windows UInt64,
+                  payload_json String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (item_id, evaluated_at, decision_id);
+              ALTER TABLE cascade.telemetry_events MODIFY TTL toDateTime(observed_at) + INTERVAL 14 DAY DELETE;
+              ALTER TABLE cascade.telemetry_feature_windows MODIFY TTL toDateTime(window_end) + INTERVAL 45 DAY DELETE;
+              ALTER TABLE cascade.anomaly_events MODIFY TTL toDateTime(detected_at) + INTERVAL 90 DAY DELETE;
+              ALTER TABLE cascade.experiment_events MODIFY TTL toDateTime(observed_at) + INTERVAL 90 DAY DELETE;
+              ALTER TABLE cascade.model_runs MODIFY TTL toDateTime(completed_at) + INTERVAL 90 DAY DELETE;
               SQL

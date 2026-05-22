@@ -122,3 +122,24 @@ patches:
           limits:
             cpu: 600m
             memory: 768Mi
+  - target:
+      kind: PersistentVolumeClaim
+      name: clickhouse-data
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 4Gi
+  - target:
+      kind: PersistentVolumeClaim
+      name: redpanda-data
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 2Gi
+  - target:
+      kind: PersistentVolumeClaim
+      name: qdrant-data
+    patch: |-
+      - op: replace
+        path: /spec/resources/requests/storage
+        value: 2Gi

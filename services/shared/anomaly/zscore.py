@@ -4,15 +4,40 @@ import math
 from statistics import mean, pstdev
 from typing import Any
 
+from services.shared.events.mapping import parse_datetime
 from services.shared.anomaly.models import ModelResult
 
-FEATURES = ["event_count", "unhealthy_rate", "error_rate", "restart_rate", "avg_cpu", "max_cpu", "avg_memory", "max_memory", "avg_latency_ms", "max_latency_ms"]
+FEATURES = [
+    "event_count",
+    "unhealthy_rate",
+    "error_rate",
+    "restart_rate",
+    "avg_cpu",
+    "max_cpu",
+    "avg_memory",
+    "max_memory",
+    "avg_latency_ms",
+    "max_latency_ms",
+    "latency_p95_ms",
+    "latency_p99_ms",
+    "request_rate",
+    "warning_event_count",
+    "dependency_unhealthy_count",
+]
 
 
 def zscore_detect(window: dict[str, Any], history: list[dict[str, Any]], threshold: float = 3.0, min_history: int = 3) -> ModelResult:
-    same_service = [row for row in history if row.get("service") == window.get("service") and row.get("window_id") != window.get("window_id")]
+    has_window_time = bool(window.get("window_start") or window.get("window_end"))
+    current_time = parse_datetime(window.get("window_start") or window.get("window_end"))
+    same_service = [
+        row
+        for row in history
+        if row.get("service") == window.get("service")
+        and row.get("window_id") != window.get("window_id")
+        and (not has_window_time or parse_datetime(row.get("window_start") or row.get("window_end")) < current_time)
+    ]
     if len(same_service) < min_history:
-        return ModelResult("rolling_zscore", "statistical_baseline", False, 0.0, 0.0, f"insufficient_history: need {min_history}, found {len(same_service)}", {"history_count": len(same_service)})
+        return ModelResult("rolling_zscore", "statistical_baseline", False, 0.0, 0.0, f"insufficient_data: need {min_history} prior windows, found {len(same_service)}", {"status": "insufficient_data", "history_count": len(same_service)})
 
     spikes = []
     max_abs_z = 0.0
@@ -38,4 +63,3 @@ def _float(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
-

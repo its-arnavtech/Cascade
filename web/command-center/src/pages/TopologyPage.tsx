@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { useAnalyzeBlastRadius, useTopologyGraph, useTopologySnapshot } from "../api/hooks";
+import { useAnalyzeBlastRadius, useRefreshTopology, useTopologyGraph, useTopologySnapshot } from "../api/hooks";
 import { BlastRadiusPanel, TargetWorkloadPanel, TopologyGraphView } from "../components/IntelligencePanels";
 import { JsonBlock } from "../components/JsonBlock";
 import { StatusPanel } from "../components/cards/StatusPanel";
@@ -8,6 +8,7 @@ export function TopologyPage() {
   const topology = useTopologyGraph();
   const snapshot = useTopologySnapshot();
   const analyze = useAnalyzeBlastRadius();
+  const refresh = useRefreshTopology();
   const [service, setService] = useState("");
 
   function submit(event: FormEvent) {
@@ -17,7 +18,11 @@ export function TopologyPage() {
 
   return (
     <div className="page">
-      <div className="page-heading"><div><h2>Topology</h2><p>Live dependency graph, target workload context, and bounded blast-radius analysis.</p></div></div>
+      <div className="page-heading">
+        <div><h2>Topology</h2><p>Live dependency graph, target workload context, and bounded blast-radius analysis.</p></div>
+        <button type="button" onClick={() => refresh.mutate()} disabled={refresh.isPending}>{refresh.isPending ? "Refreshing..." : "Refresh discovery"}</button>
+      </div>
+      {refresh.error ? <div className="state error">{refresh.error.message}</div> : null}
       <div className="grid two">
         <TargetWorkloadPanel />
         <StatusPanel title="Latest Stored Snapshot" loading={snapshot.isLoading} error={snapshot.error}>

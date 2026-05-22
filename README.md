@@ -14,9 +14,12 @@ Cascade turns raw service signals into an operator-facing reliability workflow:
 - Builds semantic memory and source-grounded operational knowledge.
 - Extracts features and detects anomaly signals.
 - Runs deterministic, read-only agent investigations.
+- Discovers live Kubernetes topology and labels nodes and edges with source, confidence, last-seen time, and evidence while keeping the static target catalog as fallback.
 - Plans chaos experiments with safety policy checks and dry-run execution.
+- Runs repeatable dry-run chaos campaigns with blast-radius caps, pause/resume/stop controls, history, and reports.
 - Generates remediation recommendations with approval records.
 - Validates remediation plans through dry-run workflows.
+- Orchestrates safe Autopilot runs that connect anomaly detection, investigation, recommendation, policy, dry-run, optional approved local-demo execution, and verification.
 - Presents the system through the Command Center web UI.
 
 ## Quick Demo With Sock Shop
@@ -32,6 +35,13 @@ cd C:\Cascade
 .\scripts\accept.ps1
 ```
 
+Run the safe presenter flow:
+
+```powershell
+.\scripts\demo-final.ps1
+.\scripts\demo-command-center.ps1 -Stage All
+```
+
 Open the Command Center using:
 
 ```powershell
@@ -44,11 +54,15 @@ Then browse to:
 http://localhost:18300
 ```
 
+Use the Overview page as the live demo cockpit. It shows system health, active anomalies, recent RCA, Autopilot runs, remediation, verification/rollback, chaos, and topology status from backend APIs. `demo-final.ps1` is the final safe product wiring check; `demo-command-center.ps1` is the presenter stage flow. See [docs/demo-walkthrough.md](docs/demo-walkthrough.md) and [docs/final-demo-verification.md](docs/final-demo-verification.md) for expected dashboard signals and reproduction notes.
+
 ## Why It Exists
 
 Modern distributed systems generate too much telemetry and too many failure signals for humans to manually connect in real time. Cascade explores a practical reliability workflow where telemetry, anomalies, runbooks, incident history, topology, and safety policies are stitched together into a single SRE command surface.
 
 The goal is not autonomous production control. The goal is safer operator assistance: evidence gathering, context retrieval, deterministic investigation, human approval, and dry-run validation before any dangerous action is considered.
+
+Cascade now has an explicit shared policy engine for remediation and Autopilot-facing action evaluation. Proposed actions are classified as allowed, blocked, dry-run-only, approval-required, or bounded automatic local-demo actions using autonomy levels 0-5, risk, blast radius, rollback availability, action budget, allowlists, denylists, and current execution mode. See [docs/policy-engine.md](docs/policy-engine.md).
 
 ## Bring Your Own Target Workload
 
@@ -109,7 +123,7 @@ Cascade currently runs as a local kind-based MVP/demo platform.
 - Acceptance scripts validate the current local system end to end.
 - Dangerous real execution is disabled by default.
 - Chaos and remediation workflows support planning, approval records, and dry-run validation.
-- The system is not production-hardened SaaS. Production use would require additional authentication, authorization, ingress/TLS, network policy, durable storage, backup/restore drills, observability hardening, and operational SLOs.
+- The system is not production-hardened SaaS. It now has configurable API-key auth, plan-bound approvals, and least-privilege RBAC guardrails as an MVP foundation; production use still requires ingress/TLS, identity-aware access, network policy, durable storage, backup/restore drills, observability hardening, and operational SLOs. See [docs/security.md](docs/security.md).
 
 ## Architecture Overview
 
@@ -125,6 +139,7 @@ Sock Shop target workload
   -> retrieval and knowledge services
   -> agent tool gateway and orchestrator
   -> chaos and remediation services
+  -> autopilot-service closed-loop orchestration
   -> command-center-api
   -> Command Center UI
 ```
@@ -137,7 +152,7 @@ Primary namespaces:
 
 Core storage and event backbone:
 
-- Redpanda topics include `telemetry.raw`, `telemetry.enriched`, `experiments.events`, `anomalies.detected`, `agent.investigations`, `chaos.experiments`, and `remediation.actions`.
+- Redpanda topics include `telemetry.raw`, `telemetry.enriched`, `experiments.events`, `anomalies.detected`, `agent.investigations`, `chaos.experiments`, `remediation.actions`, `autopilot.runs`, and `causality.reports`.
 - ClickHouse database: `cascade`.
 - Qdrant collections include incident memory and the knowledge base.
 
@@ -156,10 +171,12 @@ Core storage and event backbone:
 
 ### Storage and Memory
 
-- ClickHouse: analytical storage for telemetry, incidents, anomaly records, investigations, chaos runs, and remediation records.
-- Qdrant: vector storage for incident memory and source-grounded knowledge retrieval.
+- ClickHouse: persistent analytical storage for telemetry windows, RCA, policy, remediation, verification, rollback, Autopilot, chaos/campaigns, topology, and audit records.
+- Redpanda: persistent local replay buffer with per-topic retention; ClickHouse remains the durable evidence store.
+- Qdrant: persistent vector storage for incident memory and source-grounded knowledge retrieval.
 - `telemetry-archiver`: persists streamed telemetry and related records.
 - `memory-indexer`: indexes records into semantic memory.
+- Local PVCs are defined for ClickHouse, Redpanda, and Qdrant. High-volume telemetry has TTL retention; evidence/history tables are kept by default. See `docs/durability.md`.
 
 ### Anomaly Detection
 
@@ -177,16 +194,26 @@ Core storage and event backbone:
 - `agent-tool-gateway`: exposes safe, read-only tools for investigation workflows.
 - `agent-orchestrator-service`: runs deterministic investigation flows and records evidence.
 
+### Topology Discovery
+
+- `topology-service`: combines the active target catalog with live Kubernetes discovery for Services, Deployments, ReplicaSets, Pods, selectors, owner references, readiness, and low-confidence dependency hints. Static catalog edges remain available as fallback and override context. See [docs/topology.md](docs/topology.md).
+
 ### Chaos Engineering
 
 - `chaos-planner-service`: creates safety-checked chaos plans.
 - `chaos-executor-service`: supports dry-run chaos execution and blocks real execution by default.
+- Chaos campaigns: repeatable manual/API-triggered sequences of safety-checked chaos plans with dry-run defaults, blast-radius limits, cooldowns, history, and report summaries.
 
 ### Remediation
 
 - `remediation-recommender-service`: creates remediation plans from incidents, investigations, or manual objectives.
 - `approval-service`: records human approval and rejection decisions.
 - `remediation-executor-service`: supports dry-run validation and blocks real execution by default.
+
+### Autopilot
+
+- `autopilot-service`: deterministic closed-loop orchestrator that starts from an anomaly, service, or manual trigger; gathers investigation evidence; creates a remediation plan; checks policy; dry-runs the action; requires approval for real local-demo execution; verifies the result; and records run history.
+- Autopilot defaults to `dry_run`. `read_only` skips dry-run and execution. `local_demo_execute` can apply only policy-allowed, previously approved local demo remediation; it is not unrestricted self-healing.
 
 ### Command Center UI
 
@@ -290,6 +317,7 @@ Useful focused checks:
 ```powershell
 .\scripts\audit-secrets.ps1
 .\scripts\validate-target.ps1 -Namespace cascade-targets
+.\scripts\accept-durability.ps1 -SkipRestart
 .\scripts\accept-chaos.ps1 -DryRunOnly
 .\scripts\demo.ps1 -NoBrowser
 .\scripts\debug-all.ps1
@@ -365,7 +393,7 @@ Run bounded, policy-gated live demos:
 .\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
 ```
 
-The scripts temporarily enable live-demo flags on the relevant executor and require approval records plus dry-run-first validation. The real chaos demo creates a bounded plan, runs `/runs` with `dry_run=true`, records an approved local-demo decision through `approval-service`, then submits real execution with both the returned `approval_id` and `approved=true`. The real remediation demo creates a `restart_deployment` plan with rollback steps and post-checks, runs `/executions/dry-run`, records approval, then submits `/executions` with the returned `approval_id` and `dry_run=false`. They are scoped to `cascade-targets` and safe Sock Shop services such as `catalogue`; they intentionally block `cascade-system`, databases, brokers, session stores, wildcard selectors, namespace deletion, and deployment deletion.
+The scripts temporarily enable live-demo flags on the relevant executor and require approval records plus dry-run-first validation. The real chaos demo creates a bounded plan, runs `/runs` with `dry_run=true`, records an approved local-demo decision through `approval-service`, then submits real execution with both the returned `approval_id` and `approved=true`. The real remediation demo creates a `restart_deployment` plan with rollback steps and post-checks, runs `/executions/dry-run`, records approval, then submits `/executions` with the returned `approval_id` and `dry_run=false`; the executor captures before/after verification evidence and records rollback availability after the stabilization window. They are scoped to `cascade-targets` and safe Sock Shop services such as `catalogue`; they intentionally block `cascade-system`, databases, brokers, session stores, wildcard selectors, namespace deletion, and deployment deletion.
 
 Disable live mode and clean up:
 
@@ -410,16 +438,24 @@ Secret hygiene:
 .\scripts\audit-secrets.ps1
 ```
 
+Security hardening:
+
+```text
+docs/security.md
+```
+
 Backups:
 
 ```powershell
 .\scripts\backup-clickhouse.ps1
 .\scripts\backup-qdrant.ps1
+.\scripts\backup-cascade-state.ps1
 .\scripts\list-clickhouse-backups.ps1
 .\scripts\list-qdrant-backups.ps1
 ```
 
 Restore scripts are dry-run oriented and require explicit confirmation flags before performing restore operations.
+Reset scripts keep persistent data unless an explicit wipe flag is used. Use `wipe-cascade-state.ps1 -ConfirmWipe` only for a full local ClickHouse, Redpanda, and Qdrant state wipe.
 
 ## Repository Map
 
@@ -440,7 +476,7 @@ Cascade is a local demo/MVP platform, not a hardened production service.
 
 Known areas that would need production work include:
 
-- Authentication and RBAC.
+- External identity provider integration beyond the MVP API-key guard.
 - Ingress, TLS, and identity-aware access.
 - Network policies and workload isolation.
 - Durable storage configuration and capacity planning.
@@ -462,6 +498,9 @@ Useful starting points:
 - `scripts/validate-target.ps1`
 - `docs/chaos.md`
 - `docs/remediation.md`
+- `docs/security.md`
+- `docs/audit.md`
+- `docs/durability.md`
 - `docs/operations/ci-cd.md`
 - `docs/operations/runbook.md`
 - `docs/operations/backups.md`

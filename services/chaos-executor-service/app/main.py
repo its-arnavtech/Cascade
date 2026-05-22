@@ -8,9 +8,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services.shared.audit import build_audit_event, emit_audit_event
 from services.shared.chaos.events import chaos_event
 from services.shared.chaos.kubernetes_client import KubernetesChaosClient
 from services.shared.chaos.observation import collect_observation
@@ -20,7 +21,8 @@ from services.shared.chaos.scoring import compute_resilience_score
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
 from services.shared.live_demo import LiveDemoConfig, validate_live_demo_gate
-from services.shared.remediation.approval import is_approval_current
+from services.shared.security.approval import approval_valid_for_plan
+from services.shared.security.auth import AuthSettings, auth_status, require_auth
 from services.shared.storage.clickhouse_client import ClickHouseClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -44,6 +46,12 @@ class Settings(BaseSettings):
     cascade_allowed_target_namespace: str = "cascade-targets"
     cascade_require_approval: bool = True
     cascade_require_dry_run_first: bool = True
+    cascade_auth_enabled: bool = False
+    cascade_local_demo_auth_bypass: bool = False
+    cascade_api_keys: str = ""
+    cascade_api_key_hashes: str = ""
+    cascade_auth_header: str = "Authorization"
+    cascade_approval_signing_secret: str = ""
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
@@ -76,7 +84,7 @@ async def shutdown() -> None:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "chaos-executor-service", **_live_status()}
+    return {"status": "ok", "service": "chaos-executor-service", **_live_status(), **auth_status(_auth_settings())}
 
 
 @app.get("/ready")
@@ -101,10 +109,11 @@ async def safety_policy() -> dict[str, Any]:
 
 
 @app.post("/runs")
-async def start_run(payload: ChaosRunRequest) -> dict[str, Any]:
+async def start_run(payload: ChaosRunRequest, request: Request) -> dict[str, Any]:
+    require_auth(request, _auth_settings(), action="execute chaos run")
     plan = await _load_plan(payload.plan_id)
     approval = await _load_approval(payload.approval_id, plan["plan_id"])
-    approval_current = is_approval_current(approval)
+    approval_current, approval_violations = approval_valid_for_plan(approval, plan, signing_secret=settings.cascade_approval_signing_secret)
     safety = validate_plan(plan, default_policy(), approved=payload.approved or approval_current, dry_run=payload.dry_run)
     await _audit(plan, safety)
     if not safety.allowed:
@@ -135,6 +144,8 @@ async def start_run(payload: ChaosRunRequest) -> dict[str, Any]:
         dry_run_passed=dry_run_passed,
         current_context=k8s.current_context(),
     )
+    if approval_violations and settings.cascade_require_approval:
+        live_violations = approval_violations + live_violations
     if live_violations:
         execution = _run_dict(run_id, plan, payload, "rejected", "not_required", "; ".join(live_violations))
         await _insert_run(execution)
@@ -199,7 +210,8 @@ async def run_detail(run_id: str) -> dict[str, Any]:
 
 
 @app.post("/runs/{run_id}/cleanup")
-async def cleanup(run_id: str) -> dict[str, Any]:
+async def cleanup(run_id: str, request: Request) -> dict[str, Any]:
+    require_auth(request, _auth_settings(), action="cleanup chaos run")
     detail = await clickhouse.chaos_run_detail(run_id)
     if detail["run"] is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -210,7 +222,8 @@ async def cleanup(run_id: str) -> dict[str, Any]:
 
 
 @app.post("/runs/{run_id}/observe")
-async def observe_again(run_id: str) -> dict[str, Any]:
+async def observe_again(run_id: str, request: Request) -> dict[str, Any]:
+    require_auth(request, _auth_settings(), action="observe chaos run")
     detail = await clickhouse.chaos_run_detail(run_id)
     if detail["run"] is None:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -346,10 +359,50 @@ async def _insert_violation(plan_id: str, run_id: str, kind: str, severity: str,
 
 
 async def _audit(plan: dict[str, Any], result: Any) -> None:
-    await clickhouse.insert_chaos_policy_audit({"audit_id": "chaos_audit_" + uuid.uuid4().hex[:16], "checked_at": _now(), "plan_id": plan["plan_id"], "experiment_kind": plan["experiment_kind"], "namespace": plan["target_namespace"], "service": plan["target_service"], "allowed": 1 if result.allowed else 0, "risk_level": result.risk_level, "findings_json": _json(result.findings + result.violations), "policy_json": _json(default_policy().model_dump())})
+    audit_id = "chaos_audit_" + uuid.uuid4().hex[:16]
+    await clickhouse.insert_chaos_policy_audit({"audit_id": audit_id, "checked_at": _now(), "plan_id": plan["plan_id"], "experiment_kind": plan["experiment_kind"], "namespace": plan["target_namespace"], "service": plan["target_service"], "allowed": 1 if result.allowed else 0, "risk_level": result.risk_level, "findings_json": _json(result.findings + result.violations), "policy_json": _json(default_policy().model_dump())})
+    await emit_audit_event(
+        clickhouse,
+        build_audit_event(
+            "policy.evaluated",
+            "policy",
+            severity="info" if result.allowed else "warning",
+            payload={"plan": plan, "findings": result.findings, "violations": result.violations},
+            correlation_id=plan["plan_id"],
+            service=plan["target_service"],
+            namespace=plan["target_namespace"],
+            action=plan["experiment_kind"],
+            status="allowed" if result.allowed else "blocked",
+            risk_level=result.risk_level,
+            policy_decision_id=audit_id,
+            chaos_experiment_id=plan.get("experiment_id", ""),
+            evidence_summary="; ".join((result.findings + result.violations)[:3]),
+            user_safe_message=f"Chaos policy {'allowed' if result.allowed else 'blocked'} {plan['experiment_kind']} for {plan['target_service']}",
+        ),
+    )
 
 
 async def _publish(event_type: str, plan: dict[str, Any], run: dict[str, Any], score: dict[str, Any] | None, summary: str) -> None:
+    subsystem = "chaos"
+    await emit_audit_event(
+        clickhouse,
+        build_audit_event(
+            event_type,
+            subsystem,
+            severity="error" if event_type.endswith(".failed") else ("warning" if event_type.endswith(".rejected") else "info"),
+            payload={"plan": plan, "run": run, "score": score or {}},
+            run_id=run.get("run_id", ""),
+            correlation_id=run.get("run_id") or plan.get("plan_id", ""),
+            service=plan.get("target_service") or run.get("target_service", ""),
+            namespace=plan.get("target_namespace") or run.get("target_namespace", ""),
+            action=plan.get("experiment_kind") or run.get("experiment_kind", event_type),
+            status=run.get("status") or plan.get("status", ""),
+            risk_level=plan.get("risk_level", ""),
+            chaos_experiment_id=run.get("experiment_id") or plan.get("experiment_id", ""),
+            evidence_summary=summary,
+            user_safe_message=summary or f"Chaos event {event_type}",
+        ),
+    )
     if not settings.chaos_publish_events:
         return
     try:
@@ -383,6 +436,16 @@ def _live_status() -> dict[str, Any]:
         "approval_required": settings.cascade_require_approval,
         "dry_run_first_required": settings.cascade_require_dry_run_first,
     }
+
+
+def _auth_settings() -> AuthSettings:
+    return AuthSettings(
+        enabled=settings.cascade_auth_enabled,
+        local_demo_bypass=settings.cascade_local_demo_auth_bypass,
+        api_keys=settings.cascade_api_keys,
+        api_key_hashes=settings.cascade_api_key_hashes,
+        auth_header=settings.cascade_auth_header,
+    )
 
 
 def _decode_plan(row: dict[str, Any]) -> dict[str, Any]:

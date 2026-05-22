@@ -15,6 +15,7 @@ spec:
       labels:
         app: topology-service
     spec:
+      serviceAccountName: topology-service
       containers:
         - name: topology-service
           image: cascade-topology-service:dev

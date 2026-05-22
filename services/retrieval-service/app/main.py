@@ -12,10 +12,12 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from services.shared.causality import CausalityAnalyzeRequest, analyze_causality
+from services.shared.audit import build_audit_event, emit_audit_event
 from services.shared.embedding.deterministic import embed_text
 from services.shared.events.mapping import build_memory_document, build_memory_payload, map_incident, map_incident_report, map_topology_snapshot
 from services.shared.knowledge.context import assemble_context_pack
 from services.shared.knowledge.search import KnowledgeSearchRequest
+from services.shared.rca import build_rca_report
 from services.shared.storage.clickhouse_client import ClickHouseClient
 from services.shared.storage.qdrant_client import QdrantClient, QdrantSettings
 
@@ -103,6 +105,48 @@ async def events_recent(limit: int = 20, service: str | None = None, namespace: 
 async def events_service(service_name: str, limit: int = 50) -> dict[str, Any]:
     rows = await clickhouse.service_history(service_name, limit)
     return {"service": service_name, "events": rows, "count": len(rows)}
+
+
+@app.get("/audit/events")
+async def audit_events(
+    limit: int = 100,
+    subsystem: str | None = None,
+    severity: str | None = None,
+    service: str | None = None,
+    namespace: str | None = None,
+    status: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    correlation_id: str | None = None,
+) -> dict[str, Any]:
+    rows = await clickhouse.recent_audit_events(limit, subsystem, severity, service, namespace, status, start_time, end_time, correlation_id)
+    return {"events": rows, "count": len(rows)}
+
+
+@app.get("/audit/events/{event_id}")
+async def audit_event_detail(event_id: str) -> dict[str, Any]:
+    row = await clickhouse.audit_event(event_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audit event not found")
+    return {"event": row}
+
+
+@app.get("/audit/timeline")
+async def audit_timeline(correlation_id: str, limit: int = 200) -> dict[str, Any]:
+    rows = await clickhouse.audit_timeline(correlation_id, limit)
+    return {"correlation_id": correlation_id, "events": rows, "count": len(rows)}
+
+
+@app.get("/audit/service/{namespace}/{service}")
+async def audit_service(namespace: str, service: str, limit: int = 200) -> dict[str, Any]:
+    rows = await clickhouse.audit_service_timeline(namespace, service, limit)
+    return {"namespace": namespace, "service": service, "events": rows, "count": len(rows)}
+
+
+@app.get("/audit/autopilot/{run_id}")
+async def audit_autopilot(run_id: str, limit: int = 200) -> dict[str, Any]:
+    rows = await clickhouse.audit_autopilot_timeline(run_id, limit)
+    return {"run_id": run_id, "events": rows, "count": len(rows)}
 
 
 @app.get("/experiments/recent")
@@ -220,6 +264,50 @@ async def causality_analyze(payload: CausalityAnalyzeRequest) -> dict[str, Any]:
     return {"report": report}
 
 
+@app.post("/rca/analyze")
+async def rca_analyze(payload: CausalityAnalyzeRequest) -> dict[str, Any]:
+    target_service = payload.target_service or payload.service
+    feature_windows = await clickhouse.recent_feature_windows(payload.limit)
+    anomalies = await clickhouse.recent_anomalies(min(payload.limit, 500))
+    experiments = await clickhouse.recent_experiments(min(payload.limit, 200))
+    if payload.namespace:
+        feature_windows = [row for row in feature_windows if row.get("namespace") == payload.namespace]
+        anomalies = [row for row in anomalies if row.get("namespace") == payload.namespace]
+        experiments = [row for row in experiments if row.get("target_namespace") == payload.namespace]
+    topology = await clickhouse.latest_topology_snapshot()
+    report = build_rca_report(feature_windows, anomalies, topology, experiments, target_service=target_service)
+    await clickhouse.insert_rca_report(report)
+    await emit_audit_event(
+        clickhouse,
+        build_audit_event(
+            "rca.report.created",
+            "RCA",
+            payload=report,
+            service=str(report.get("target_service") or target_service or ""),
+            namespace=str(payload.namespace or ""),
+            status=str(report.get("status") or ""),
+            rca_report_id=str(report.get("report_id") or ""),
+            evidence_summary=str(report.get("explanation") or "RCA report created"),
+            user_safe_message=f"RCA report created for {report.get('target_service') or target_service or 'service'}",
+        ),
+    )
+    return {"report": report}
+
+
+@app.get("/rca/recent")
+async def rca_recent(limit: int = 20, service: str | None = None) -> dict[str, Any]:
+    rows = await clickhouse.recent_rca_reports(limit, service)
+    return {"reports": [decode_rca_report_row(row) for row in rows], "count": len(rows)}
+
+
+@app.get("/rca/{report_id}")
+async def rca_detail(report_id: str) -> dict[str, Any]:
+    row = await clickhouse.rca_report_detail(report_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="RCA report not found")
+    return {"report": decode_rca_report_row(row)}
+
+
 @app.get("/causality/reports/recent")
 async def causality_reports_recent(limit: int = 20, target_service: str | None = None) -> dict[str, Any]:
     rows = await clickhouse.recent_causal_reports(limit, target_service)
@@ -286,11 +374,18 @@ async def debug_counts() -> dict[str, Any]:
         "anomaly_events",
         "causal_reports",
         "causal_candidates",
+        "rca_reports",
         "model_runs",
         "knowledge_documents",
         "knowledge_chunks",
         "knowledge_ingestion_runs",
         "knowledge_queries",
+        "autopilot_runs",
+        "autopilot_steps",
+        "chaos_campaigns",
+        "chaos_campaign_runs",
+        "chaos_campaign_steps",
+        "audit_events",
     ]
     counts = {}
     for table in tables:
@@ -395,4 +490,27 @@ def decode_causal_candidate_row(row: dict[str, Any]) -> dict[str, Any]:
                 decoded[target] = json.loads(value)
             except Exception:
                 decoded[target] = value
+    return decoded
+
+
+def decode_rca_report_row(row: dict[str, Any]) -> dict[str, Any]:
+    decoded = dict(row)
+    for source, target in [
+        ("affected_services_json", "affected_downstream_services"),
+        ("related_chaos_json", "related_chaos_experiment"),
+        ("evidence_json", "evidence"),
+        ("timeline_json", "timeline"),
+        ("limitations_json", "limitations"),
+        ("report_json", "report"),
+    ]:
+        value = decoded.pop(source, None)
+        if value is not None:
+            try:
+                decoded[target] = json.loads(value)
+            except Exception:
+                decoded[target] = value
+    if isinstance(decoded.get("report"), dict):
+        merged = dict(decoded["report"])
+        merged.update({key: value for key, value in decoded.items() if key != "report"})
+        return merged
     return decoded

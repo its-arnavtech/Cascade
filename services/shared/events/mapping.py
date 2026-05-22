@@ -153,12 +153,14 @@ def map_incident_report(report: dict[str, Any], incident: dict[str, Any] | None 
 
 def map_topology_snapshot(topology: dict[str, Any]) -> dict[str, Any]:
     dependencies = topology.get("dependencies") or topology.get("topology") or {}
-    edge_count = sum(len(v) for v in dependencies.values()) if isinstance(dependencies, dict) else 0
+    edges = topology.get("edges") if isinstance(topology.get("edges"), list) else []
+    nodes = topology.get("nodes") if isinstance(topology.get("nodes"), list) else []
+    edge_count = sum(len(v) for v in dependencies.values()) if isinstance(dependencies, dict) else len(edges)
     return {
         "snapshot_id": str(topology.get("snapshot_id") or compact_hash("topology", topology)),
         "captured_at": isoformat(parse_datetime(topology.get("captured_at"))),
         "topology_json": stable_json(topology),
-        "service_count": len(dependencies) if isinstance(dependencies, dict) else 0,
+        "service_count": len(dependencies) if isinstance(dependencies, dict) else len(nodes),
         "edge_count": edge_count,
     }
 

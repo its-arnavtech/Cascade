@@ -15,7 +15,10 @@ $phases = @(
     @{ Name = "Knowledge and RAG"; Script = ".\scripts\accept-knowledge-rag.ps1"; Args = @() },
     @{ Name = "Agent investigations"; Script = ".\scripts\accept-agents.ps1"; Args = @() },
     @{ Name = "Chaos engineering"; Script = ".\scripts\accept-chaos.ps1"; Args = @("-DryRunOnly") },
-    @{ Name = "Remediation"; Script = ".\scripts\accept-remediation.ps1"; Args = @() }
+    @{ Name = "Remediation"; Script = ".\scripts\accept-remediation.ps1"; Args = @() },
+    @{ Name = "Autopilot"; Script = ".\scripts\accept-autopilot.ps1"; Args = @() },
+    @{ Name = "Scheduler"; Script = ".\scripts\accept-scheduler.ps1"; Args = @() },
+    @{ Name = "Durability"; Script = ".\scripts\accept-durability.ps1"; Args = @("-SkipRestart") }
 )
 if (-not $SkipCommandCenter) {
     $phases += @{ Name = "Command Center UI"; Script = ".\scripts\accept.ps1"; Args = @() }
@@ -31,6 +34,7 @@ foreach ($phase in $phases) {
     Write-Host "============================================================"
     switch ($phase.Name) {
         "Chaos engineering" { & ".\scripts\accept-chaos.ps1" -DryRunOnly *>&1 | Tee-Object -FilePath $logPath }
+        "Durability" { & ".\scripts\accept-durability.ps1" -SkipRestart *>&1 | Tee-Object -FilePath $logPath }
         default { & $phase.Script *>&1 | Tee-Object -FilePath $logPath }
     }
     $exitCode = $LASTEXITCODE

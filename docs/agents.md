@@ -2,7 +2,7 @@
 
 Agent investigations turns Cascade into an evidence-backed incident investigator. It adds a read-only tool gateway and an agent orchestrator that can gather telemetry, anomaly, topology, memory, and knowledge evidence, then produce a structured investigation report.
 
-Agent investigations does not execute remediation, mutate Kubernetes resources, run chaos experiments, or provide a UI.
+Agent investigations does not execute remediation, mutate Kubernetes resources, run chaos experiments, or provide a UI. The separate Autopilot service can consume investigation outputs as one step in a policy-gated loop, but the agent runtime itself remains read-only.
 
 ## Architecture
 
@@ -118,7 +118,7 @@ Full report bodies stay in ClickHouse, not Kafka.
 - Suggested remediation is text only.
 - No `kubectl` mutations are executed by Agent investigations services.
 - No Chaos Mesh experiments are applied automatically.
-- No remediation approval or execution workflow exists yet.
+- Remediation approval and execution live in the remediation services and can be orchestrated by Autopilot; Agent investigations remains read-only.
 
 ## Deployment
 
@@ -168,7 +168,7 @@ The debug script collects Kubernetes status, Redpanda topics, Agent investigatio
 
 - Deterministic mode is the default investigation engine.
 - LangGraph/LLM mode is optional scaffolding only.
-- No remediation execution.
+- No remediation execution inside the agent runtime.
 - No autonomous chaos execution.
 - No UI.
 - No long-running async workflow engine yet; Agent investigations investigations run synchronously for local demos and acceptance.

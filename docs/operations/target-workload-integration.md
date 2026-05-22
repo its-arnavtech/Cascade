@@ -179,6 +179,15 @@ kubectl -n cascade-system logs deployment/observation-service --tail=100
 .\scripts\accept-telemetry.ps1
 ```
 
+RED metrics missing or marked insufficient:
+
+```powershell
+kubectl port-forward -n cascade-system svc/observation-service 18000:8000
+Invoke-RestMethod "http://localhost:18000/snapshot" | ConvertTo-Json -Depth 8
+```
+
+Review `query_status`, `missing_metrics`, `collection_warnings`, and `evidence_quality`. Cascade can still use Kubernetes readiness, restarts, labels, and warning events, but request-rate/error-rate/latency gaps should lower RCA confidence until the workload exports compatible Prometheus RED series.
+
 Service labels missing:
 
 ```powershell

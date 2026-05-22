@@ -33,6 +33,16 @@ spec:
               value: http://topology-service.cascade-system.svc.cluster.local:8004
             - name: RETRIEVAL_SERVICE_URL
               value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:

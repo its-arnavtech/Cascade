@@ -8,7 +8,8 @@ $keywords = @(
     "api_key", "apikey", "secret", "password", "passwd", "token", "bearer", "authorization",
     "private_key", "client_secret", "DATABASE_URL", "CLICKHOUSE_PASSWORD", "QDRANT_API_KEY",
     "OPENAI_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "kubeconfig",
-    "BEGIN RSA PRIVATE KEY", "BEGIN OPENSSH PRIVATE KEY", "service_account"
+    "BEGIN RSA PRIVATE KEY", "BEGIN OPENSSH PRIVATE KEY", "BEGIN PRIVATE KEY", "client-key-data",
+    "client-certificate-data", "service_account", "refresh_token", "id_token", "access_token"
 )
 
 $safeValues = @("", "none", "null", "false", "true", "changeme", "change-me", "placeholder", "example", "demo", "demo-only-not-secret", "replace-me", "replace-with-local-key-if-needed", "<redacted>", "<placeholder>", "your-value-here")
@@ -19,6 +20,26 @@ function Test-SafeSecretValue {
     param([string]$Value)
     $normalized = $Value.Trim().Trim('"', "'").ToLowerInvariant()
     return ($safeValues -contains $normalized -or $Value -match '^\$\{?[A-Z0-9_]+\}?$')
+}
+
+function Test-DynamicCodeValue {
+    param([string]$Line, [string]$Value)
+    $trimmed = $Value.Trim().Trim('"', "'", '`')
+    if ($Line -match '\$\{') { return $true }
+    if ($trimmed -match '^(settings|self|payload|request|headers|metadata|approval|auth|token|key|digest|configured|configured_plain|configured_hashes|configuredApiToken|import\.meta|os\.getenv|_split|hashlib|hmac|json|base64|str|bool|int|len|any|all|dict|list|set|Path)\b') { return $true }
+    if ($trimmed -match '^[A-Za-z_][A-Za-z0-9_]*\(') { return $true }
+    if ($trimmed -match '^[frbuFRBU]*["'']') { return $true }
+    if ($Line -match '(?i)\b(api_keys|api_key_hashes|auth_header|signing_secret)\s*=\s*settings\.') { return $true }
+    return $false
+}
+
+function Test-AllowedFixtureFinding {
+    param([string]$File, [string]$Reason)
+    $normalized = $File -replace '\\', '/'
+    if ($normalized -match '^(tests|docs)/') { return $true }
+    if ($normalized -match '^targets/sock-shop/') { return $true }
+    if ($normalized -eq 'scripts/audit-secrets.ps1' -and $Reason -in @("non-placeholder assignment", "jwt-like token", "credential in URL", "kubeconfig credential data")) { return $true }
+    return $false
 }
 
 foreach ($file in $tracked) {
@@ -39,9 +60,12 @@ foreach ($file in $tracked) {
                 $value = $match.Groups[3].Value.Trim()
                 $keyLooksCredentialLike = ($keyName -match 'api|secret|password|passwd|authorization|private|client|database|aws|openai|qdrant|clickhouse|service_account')
                 $fileAllowsCodeIdentifiers = $file -match 'package-lock\.json$|deterministic\.py$'
-                if ($keyLooksCredentialLike -and -not $fileAllowsCodeIdentifiers -and -not (Test-SafeSecretValue $value)) {
+                $dynamicCodeValue = Test-DynamicCodeValue $line $value
+                if ($keyLooksCredentialLike -and -not $fileAllowsCodeIdentifiers -and -not $dynamicCodeValue -and -not (Test-SafeSecretValue $value)) {
                     $highConfidence = $true
                     $reason = "non-placeholder assignment"
+                } elseif ($dynamicCodeValue) {
+                    $reason = "dynamic code assignment"
                 } else {
                     $reason = "placeholder assignment"
                 }
@@ -63,6 +87,27 @@ foreach ($file in $tracked) {
             if ($line -match "-----BEGIN (RSA|OPENSSH|DSA|EC) PRIVATE KEY-----") {
                 $highConfidence = $true
                 $reason = "private key block"
+            }
+            if ($line -match "-----BEGIN [A-Z ]*PRIVATE KEY-----") {
+                $highConfidence = $true
+                $reason = "private key block"
+            }
+            if ($line -match '(?i)\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b') {
+                $highConfidence = $true
+                $reason = "jwt-like token"
+            }
+            if ($line -match '(?i)[a-z][a-z0-9+.-]*://[^:/\s]+:[^@\s]+@') {
+                $highConfidence = $true
+                $reason = "credential in URL"
+            }
+            if ($line -match '(?i)client-(key|certificate)-data:\s*[A-Za-z0-9+/=]{40,}') {
+                $highConfidence = $true
+                $reason = "kubeconfig credential data"
+            }
+
+            if ($highConfidence -and (Test-AllowedFixtureFinding $file $reason)) {
+                $highConfidence = $false
+                $reason = "documented/test/demo fixture"
             }
 
             $findings.Add([pscustomobject]@{

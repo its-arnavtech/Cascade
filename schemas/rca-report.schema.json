@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cascade.local/schemas/rca-report.schema.json",
+  "title": "Cascade RCA Evidence Bundle",
+  "description": "Deterministic root-cause analysis bundle built from telemetry, anomalies, topology, and chaos timing.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_id",
+    "generated_at",
+    "status",
+    "target_service",
+    "likely_root_cause_service",
+    "affected_downstream_services",
+    "confidence_score",
+    "evidence",
+    "timeline",
+    "limitations",
+    "explanation"
+  ],
+  "properties": {
+    "schema_version": { "const": "cascade.rca.v1" },
+    "report_id": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "status": { "enum": ["ranked", "low_confidence", "insufficient_data"] },
+    "target_service": { "type": "string" },
+    "likely_root_cause_service": { "type": "string" },
+    "affected_downstream_services": { "type": "array", "items": { "type": "string" } },
+    "confidence_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "related_chaos_experiment": { "type": ["object", "null"] },
+    "evidence": { "type": "array", "items": { "type": "object" } },
+    "timeline": { "type": "array", "items": { "type": "object" } },
+    "candidate_root_causes": { "type": "array", "items": { "type": "object" } },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "explanation": { "type": "string" }
+  }
+}

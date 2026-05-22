@@ -96,7 +96,7 @@ try {
     if ($api.ExitCode -eq 0) { Add-Pass "Kubernetes API reachable" } else { Add-Fail "Kubernetes API unreachable"; throw "No cluster" }
 
     Write-Section "A. Remediation Baseline"
-    foreach ($d in @("redpanda", "clickhouse", "qdrant", "retrieval-service", "knowledge-retrieval-service", "agent-tool-gateway", "agent-orchestrator-service", "chaos-planner-service", "chaos-executor-service", "remediation-recommender-service", "approval-service", "remediation-executor-service")) { Test-Deployment $d | Out-Null }
+    foreach ($d in @("redpanda", "clickhouse", "qdrant", "retrieval-service", "knowledge-retrieval-service", "agent-tool-gateway", "agent-orchestrator-service", "chaos-planner-service", "chaos-executor-service", "remediation-recommender-service", "approval-service", "remediation-executor-service", "scheduler-service")) { Test-Deployment $d | Out-Null }
     $tables = CH "SHOW TABLES FROM cascade"
     foreach ($t in @("telemetry_events", "experiment_events", "anomaly_events", "investigation_runs", "chaos_experiment_runs", "remediation_plans", "remediation_approvals", "remediation_executions")) {
         if ($tables -match "(?m)^$t$") { Add-Pass "ClickHouse table $t exists" } else { Add-Fail "ClickHouse table $t missing" }
@@ -141,7 +141,9 @@ try {
         @("/api/chaos/planner/health", "chaos planner health"),
         @("/api/chaos/executor/safety/policy", "chaos executor safety policy"),
         @("/api/remediation/recommender/health", "remediation recommender health"),
-        @("/api/remediation/executor/safety/policy", "remediation executor safety policy")
+        @("/api/remediation/executor/safety/policy", "remediation executor safety policy"),
+        @("/api/scheduler/health", "scheduler health"),
+        @("/api/scheduler/scheduler/status", "scheduler status")
     )) {
         $result = HttpJson GET "$base$($check[0])"
         if ($null -ne $result) { Add-Pass "$($check[1]) works through proxy" } else { Add-Fail "$($check[1]) failed through proxy" }

@@ -44,18 +44,32 @@ def test_real_remediation_execution_blocked_by_default() -> None:
     ("url", "body"),
     [
         ("/api/remediation/executor/executions/dry-run", {}),
+        ("/api/autopilot/runs", {"mode": "dry_run"}),
+        ("/api/scheduler/scheduler/items", {"item_type": "autopilot_run", "mode": "dry_run_scheduler", "payload": {"mode": "dry_run"}}),
+        ("/api/scheduler/scheduler/items/sched-1/pause", {}),
+        ("/api/scheduler/scheduler/items/sched-1/resume", {}),
+        ("/api/scheduler/scheduler/items/sched-1/run", {}),
+        ("/api/scheduler/scheduler/tick", {}),
         ("/api/chaos/planner/plans", {"dry_run": True}),
+        ("/api/chaos/planner/campaigns", {"dry_run": True, "local_demo_execution_enabled": False}),
+        ("/api/chaos/planner/campaigns/camp-1/start", {"dry_run": True}),
+        ("/api/chaos/planner/campaigns/camp-1/pause", {}),
+        ("/api/chaos/planner/campaigns/camp-1/resume", {}),
+        ("/api/chaos/planner/campaigns/camp-1/stop", {}),
         ("/api/chaos/executor/runs", {"dry_run": True, "approved": False}),
         ("/api/agent/investigations", {}),
         ("/api/topology/topology/impact", {"root_service": "catalogue"}),
         ("/api/topology/topology/blast-radius", {"root_service": "catalogue"}),
         ("/api/topology/topology/critical-paths", {"root_service": "catalogue"}),
+        ("/api/topology/topology/refresh", {}),
         ("/api/causality/causality/analyze", {"target_service": "catalogue"}),
         ("/api/causal-reconstruction/reconstruct", {"experiment_id": "exp-1"}),
         ("/api/timeline/timeline", {}),
         ("/api/timeline/report", {}),
         ("/api/chaos/planner/plans/plan-1/validate", {}),
         ("/api/remediation/recommender/plans/plan-1/validate", {}),
+        ("/api/remediation/recommender/policy/evaluate", {"action_type": "restart_deployment", "service": "catalogue"}),
+        ("/api/remediation/executor/safety/evaluate", {"action_type": "restart_deployment", "service": "catalogue", "dry_run": True}),
     ],
 )
 def test_safe_create_routes_not_blocked_by_safety_gate(monkeypatch: pytest.MonkeyPatch, url: str, body: dict[str, object]) -> None:
@@ -75,6 +89,38 @@ def test_safe_create_routes_not_blocked_by_safety_gate(monkeypatch: pytest.Monke
 def test_real_chaos_run_blocked_by_default() -> None:
     response = client.post("/api/chaos/executor/runs", json={"dry_run": False, "approved": True})
     assert response.status_code == 403
+
+
+def test_real_chaos_campaign_start_blocked_by_default() -> None:
+    response = client.post("/api/chaos/planner/campaigns/camp-1/start", json={"dry_run": False})
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/api/remediation/executor/verifications",
+        "/api/remediation/executor/verifications/verify_1",
+        "/api/remediation/executor/executions/rem_exec_1/verification",
+        "/api/remediation/executor/rollback-plans",
+        "/api/remediation/executor/rollback-plans/rollback_1",
+    ],
+)
+def test_remediation_verification_read_routes_are_proxied(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    async def fake_request(*args, **kwargs):
+        class FakeResponse:
+            status_code = 200
+            content = b'{"status":"ok"}'
+            headers = {"content-type": "application/json"}
+
+            def json(self):
+                return {"status": "ok"}
+
+        return FakeResponse()
+
+    monkeypatch.setattr(module.httpx.AsyncClient, "request", fake_request)
+    response = client.get(url)
+    assert response.status_code == 200
 
 
 def test_topology_graph_alias_proxies_existing_service_route(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,6 +258,7 @@ def test_real_execution_routes_forward_only_when_proxy_dangerous_flag_enabled(mo
         "/api/chaos/executor/runs/chaos_run_1/observe",
         "/api/remediation/recommender/plans/from-latest-anomaly",
         "/api/remediation/executor/executions/rem_exec_1/retry",
+        "/api/remediation/executor/rollback-plans/rollback_1/execute",
     ],
 )
 def test_dangerous_or_unreviewed_post_routes_blocked_by_default(url: str) -> None:
@@ -232,6 +279,28 @@ def test_rate_limiter_blocks_after_configured_window(monkeypatch: pytest.MonkeyP
     assert second.status_code == 429
     assert second.json()["detail"] == "Command Center API rate limit exceeded"
     module.rate_limiter.reset()
+
+
+def test_autopilot_route_is_registered() -> None:
+    assert "autopilot" in module.ROUTES
+
+
+def test_scheduler_route_is_registered() -> None:
+    assert "scheduler" in module.ROUTES
+
+
+def test_scheduler_blocks_live_autopilot_schedule_by_default() -> None:
+    response = client.post("/api/scheduler/scheduler/items", json={"item_type": "autopilot_run", "mode": "dry_run_scheduler", "payload": {"mode": "local_demo_execute"}})
+    assert response.status_code == 403
+
+
+def test_contract_schema_endpoint_exposes_topic_mapping() -> None:
+    response = client.get("/api/contracts")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "RemediationExecution" in payload["schema"]["$defs"]
+    assert payload["event_topics"]["remediation.actions"] == "RemediationExecution"
+    assert payload["correlation"]["correlation_id"]
 
 
 def test_rate_limiter_exempts_health_and_ready(monkeypatch: pytest.MonkeyPatch) -> None:

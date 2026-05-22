@@ -39,6 +39,10 @@
     "service_name": {
       "type": ["string", "null"]
     },
+    "labels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
     "cpu": {
       "type": ["number", "null"]
     },
@@ -59,7 +63,7 @@
       "type": "array",
       "items": {
         "type": "string",
-        "enum": ["high_cpu", "high_memory", "unstable", "degraded"]
+        "enum": ["high_cpu", "high_memory", "unstable", "degraded", "high_error_rate", "high_latency", "not_ready", "service_unavailable", "warning_events", "dependency_unhealthy", "insufficient_data"]
       },
       "uniqueItems": true
     },
@@ -81,6 +85,57 @@
         "restart_count": {
           "type": "integer",
           "minimum": 0
+        },
+        "request_rate": {
+          "type": ["number", "null"]
+        },
+        "error_rate": {
+          "type": ["number", "null"]
+        },
+        "latency_p50_ms": {
+          "type": ["number", "null"]
+        },
+        "latency_p95_ms": {
+          "type": ["number", "null"]
+        },
+        "latency_p99_ms": {
+          "type": ["number", "null"]
+        },
+        "ready": {
+          "type": ["boolean", "null"]
+        },
+        "warning_event_count": {
+          "type": ["number", "null"]
+        },
+        "service_available": {
+          "type": ["boolean", "null"]
+        },
+        "redpanda_healthy": {
+          "type": ["boolean", "null"]
+        },
+        "clickhouse_healthy": {
+          "type": ["boolean", "null"]
+        },
+        "qdrant_healthy": {
+          "type": ["boolean", "null"]
+        },
+        "missing_metrics": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "collection_warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "metric_status": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "evidence_quality": {
+          "type": "string"
+        },
+        "used_kubernetes_fallback": {
+          "type": "boolean"
         }
       }
     },

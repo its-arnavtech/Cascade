@@ -9,6 +9,7 @@ from services.shared.remediation.events import remediation_event
 from services.shared.remediation.planner import build_plan
 from services.shared.remediation.safety import default_policy, validate_approval, validate_plan
 from services.shared.remediation.schemas import ExecutionRequest, RemediationPlanRequest
+from services.shared.remediation.verification import build_health_snapshot, build_rollback_plan, evaluate_verification
 
 
 class Phase8CoreTests(unittest.TestCase):
@@ -113,6 +114,8 @@ class Phase8CoreTests(unittest.TestCase):
         self.assertGreaterEqual(len(plan["rollback_steps"]), 1)
         self.assertGreaterEqual(len(plan["post_checks"]), 1)
         self.assertGreaterEqual(len(plan["evidence_refs"]), 1)
+        self.assertIn("policy_decision", plan)
+        self.assertEqual(plan["policy_decision"]["action_type"], "investigate_only")
         self.assertGreater(plan["confidence"], 0)
 
     def test_approval_requires_explicit_decision_and_rejection_reason(self) -> None:
@@ -130,9 +133,74 @@ class Phase8CoreTests(unittest.TestCase):
     def test_agent_gateway_has_read_only_tools_only(self) -> None:
         self.assertIn("get_recent_remediation_plans", TOOL_REGISTRY)
         self.assertIn("get_remediation_safety_policy", TOOL_REGISTRY)
+        self.assertIn("evaluate_remediation_policy", TOOL_REGISTRY)
+        self.assertIn("get_recent_remediation_verifications", TOOL_REGISTRY)
+        self.assertIn("get_recent_remediation_rollback_plans", TOOL_REGISTRY)
         self.assertNotIn("approve_remediation", TOOL_REGISTRY)
         self.assertNotIn("execute_remediation", TOOL_REGISTRY)
         self.assertIn("execute_remediation", MUTATING_TOOL_NAMES)
+
+    def test_verification_marks_successful_improvement(self) -> None:
+        plan = self._plan("restart_deployment")
+        before = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="before", kubernetes={"replicas": 1, "available_replicas": 0, "ready_replicas": 0, "ready_pods": 0, "restart_count": 3, "template_metadata": {"annotations": {"old": "value"}}}, anomalies=[{"risk_score": 0.8, "namespace": "cascade-targets"}])
+        after = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="after", kubernetes={"replicas": 1, "available_replicas": 1, "ready_replicas": 1, "ready_pods": 1, "restart_count": 0, "template_metadata": {"annotations": {"old": "value"}}}, anomalies=[])
+        execution = {"execution_id": "rem_exec_1", "status": "completed", "completed_at": "2026-01-01 00:00:00.000"}
+        rollback = build_rollback_plan(plan, "rem_exec_1", before)
+
+        result = evaluate_verification(plan=plan, execution=execution, before=before, after=after, rollback_plan=rollback)
+
+        self.assertIn(result.status, {"fixed", "improved"})
+        self.assertEqual(result.evidence_quality, "sufficient")
+        self.assertTrue(any(item["direction"] == "improved" for item in result.comparisons))
+
+    def test_verification_marks_no_improvement(self) -> None:
+        plan = self._plan("restart_deployment")
+        before = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="before", kubernetes={"replicas": 1, "available_replicas": 1, "ready_replicas": 1, "ready_pods": 1, "restart_count": 0})
+        after = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="after", kubernetes={"replicas": 1, "available_replicas": 1, "ready_replicas": 1, "ready_pods": 1, "restart_count": 0})
+        execution = {"execution_id": "rem_exec_2", "status": "completed"}
+
+        result = evaluate_verification(plan=plan, execution=execution, before=before, after=after)
+
+        self.assertEqual(result.status, "unchanged")
+
+    def test_verification_marks_degraded_result(self) -> None:
+        plan = self._plan("restart_deployment")
+        before = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="before", kubernetes={"replicas": 1, "available_replicas": 1, "ready_replicas": 1, "ready_pods": 1, "restart_count": 0})
+        after = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="after", kubernetes={"replicas": 1, "available_replicas": 0, "ready_replicas": 0, "ready_pods": 0, "restart_count": 4})
+        execution = {"execution_id": "rem_exec_3", "status": "completed"}
+
+        result = evaluate_verification(plan=plan, execution=execution, before=before, after=after)
+
+        self.assertEqual(result.status, "degraded")
+
+    def test_rollback_available_for_replica_snapshot(self) -> None:
+        plan = self._plan("scale_deployment_noop")
+        before = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="before", kubernetes={"replicas": 3, "available_replicas": 3})
+
+        rollback = build_rollback_plan(plan, "rem_exec_4", before)
+
+        self.assertTrue(rollback.available)
+        self.assertTrue(rollback.auto_executable)
+        self.assertEqual(rollback.actions[0]["replicas"], 3)
+
+    def test_rollback_unavailable_for_missing_restart_snapshot(self) -> None:
+        plan = self._plan("restart_deployment")
+        before = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="before", kubernetes={})
+
+        rollback = build_rollback_plan(plan, "rem_exec_5", before)
+
+        self.assertFalse(rollback.available)
+        self.assertIn("non-reversible", rollback.reason)
+
+    def test_verification_failed_and_insufficient_evidence(self) -> None:
+        plan = self._plan("restart_deployment")
+        before = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="before")
+        after = build_health_snapshot(service="catalogue", namespace="cascade-targets", phase="after")
+        failed = evaluate_verification(plan=plan, execution={"execution_id": "rem_exec_6", "status": "failed"}, before=before, after=after)
+        insufficient = evaluate_verification(plan=plan, execution={"execution_id": "rem_exec_7", "status": "completed"}, before=before, after=after)
+
+        self.assertEqual(failed.status, "failed")
+        self.assertEqual(insufficient.status, "insufficient_evidence")
 
     def test_rbac_manifest_has_no_cluster_admin_or_secret_access(self) -> None:
         text = Path("infra/kubernetes/remediation-executor-service/rbac.yaml").read_text(encoding="utf-8")

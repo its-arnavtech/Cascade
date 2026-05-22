@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { apiGet, apiPost } from "../api/client";
-import { useApprovals, useCreateApproval, useCreateRemediationPlan, useDryRunRemediation, useExecutions, useLiveDemoStatus, useRemediationPlans, useRemediationPolicy } from "../api/hooks";
+import { useApprovals, useCreateApproval, useCreateRemediationPlan, useDryRunRemediation, useExecutions, useLiveDemoStatus, useRemediationPlans, useRemediationPolicy, useRemediationRollbackPlans, useRemediationVerifications } from "../api/hooks";
 import { AlertTriangle, Check } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { SafetyFindingsPanel, TargetWorkloadPanel } from "../components/IntelligencePanels";
@@ -13,6 +13,8 @@ export function RemediationPage() {
   const plans = useRemediationPlans({ limit: 20 });
   const approvals = useApprovals({ limit: 20 });
   const executions = useExecutions({ limit: 20 });
+  const verifications = useRemediationVerifications({ limit: 20 });
+  const rollbackPlans = useRemediationRollbackPlans({ limit: 20 });
   const liveStatus = useLiveDemoStatus();
   const createPlan = useCreateRemediationPlan();
   const createApproval = useCreateApproval();
@@ -160,11 +162,26 @@ export function RemediationPage() {
       <StatusPanel title="Safety Policy" loading={policy.isLoading} error={policy.error}>{showPolicyRaw ? <JsonBlock value={policy.data} /> : <PolicySummary value={policy.data} />}<button type="button" className="link-button" onClick={() => setShowPolicyRaw((value) => !value)}>{showPolicyRaw ? "Hide raw policy" : "View raw policy"}</button></StatusPanel>
       <StatusPanel title="Live Demo Status" loading={liveStatus.isLoading} error={liveStatus.error}><JsonBlock value={liveStatus.data} /></StatusPanel>
       <StatusPanel title="Remediation Plans" loading={plans.isLoading} error={plans.error}>
-        <DataTable caption="Remediation plans" rows={plans.data?.plans ?? []} empty="No data returned." columns={[{ key: "created_at", label: "Created", width: "130px" }, { key: "plan_id", label: "Plan", width: "160px" }, { key: "service", label: "Service", width: "140px" }, { key: "action_type", label: "Action", width: "140px" }, { key: "confidence", label: "Confidence", width: "100px" }, { key: "safety_findings", label: "Safety", render: (row) => formatList(row.safety_findings) }, { key: "rollback_steps", label: "Rollback", render: (row) => formatList(row.rollback_steps) }, { key: "actions", label: "Actions", width: "190px", align: "right", render: (row) => <div className="table-actions"><button type="button" className="compact" onClick={() => { const id = String(row.plan_id ?? ""); setApprovalForm((current) => ({ ...current, plan_id: id })); setActiveStep(2); }}>Approve -&gt;</button><button type="button" className="btn-dry compact" onClick={() => { const id = String(row.plan_id ?? ""); setDryRunForm((current) => ({ ...current, plan_id: id })); setActiveStep(3); }}>Validate -&gt;</button></div> }]} />
+        <DataTable caption="Remediation plans" rows={plans.data?.plans ?? []} empty="No remediation plans returned." columns={[
+          { key: "created_at", label: "Created", width: "130px" },
+          { key: "plan_id", label: "Plan", width: "160px" },
+          { key: "service", label: "Service", width: "140px", render: (row) => <code className="inline-code">{String(row.service ?? "-")}</code> },
+          { key: "action_type", label: "Action", width: "150px" },
+          { key: "risk", label: "Risk", width: "100px", render: (row) => <Badge tone={riskTone(policyDecision(row).risk_level ?? row.severity)}>{String(policyDecision(row).risk_level ?? row.severity ?? "unknown")}</Badge> },
+          { key: "policy", label: "Policy", width: "150px", render: (row) => <Badge tone={policyTone(policyDecision(row).status)}>{String(policyDecision(row).status ?? "not evaluated").replace(/_/g, " ")}</Badge> },
+          { key: "approval", label: "Approval", width: "120px", render: (row) => policyDecision(row).requires_approval ? "Required" : "Not required" },
+          { key: "rollback_steps", label: "Rollback", width: "110px", render: (row) => arrayLength(row.rollback_steps) ? "Present" : "Missing" },
+          { key: "reason", label: "Reason", render: (row) => formatList(policyDecision(row).reasons ?? row.safety_findings) },
+          { key: "actions", label: "Actions", width: "190px", align: "right", render: (row) => <div className="table-actions"><button type="button" className="compact" onClick={() => { const id = String(row.plan_id ?? ""); setApprovalForm((current) => ({ ...current, plan_id: id })); setActiveStep(2); }}>Approve -&gt;</button><button type="button" className="btn-dry compact" onClick={() => { const id = String(row.plan_id ?? ""); setDryRunForm((current) => ({ ...current, plan_id: id })); setActiveStep(3); }}>Validate -&gt;</button></div> },
+        ]} />
       </StatusPanel>
       <div className="grid two">
         <StatusPanel title="Approvals" loading={approvals.isLoading} error={approvals.error}><DataTable caption="Approvals" rows={approvals.data?.approvals ?? []} empty="No data returned." columns={[{ key: "decided_at", label: "Decided" }, { key: "plan_id", label: "Plan" }, { key: "decision", label: "Decision", render: (row) => <Badge tone={row.decision === "approved" ? "good" : "bad"}>{String(row.decision ?? "-")}</Badge> }, { key: "approver", label: "Approver" }, { key: "reason", label: "Reason" }]} /></StatusPanel>
         <StatusPanel title="Executions / Dry-runs" loading={executions.isLoading} error={executions.error}><DataTable caption="Executions and dry-runs" rows={executions.data?.executions ?? []} empty="No data returned." columns={[{ key: "started_at", label: "Started" }, { key: "plan_id", label: "Plan" }, { key: "dry_run", label: "Dry-run" }, { key: "executed", label: "Executed" }, { key: "rollback_available", label: "Rollback" }, { key: "validation_status", label: "Validation", render: (row) => <Badge tone={statusTone(row.validation_status)}>{String(row.validation_status ?? "-")}</Badge> }, { key: "output_summary", label: "Dry-run result" }]} /></StatusPanel>
+      </div>
+      <div className="grid two">
+        <StatusPanel title="Post-Remediation Verification" loading={verifications.isLoading} error={verifications.error}><DataTable caption="Verification results" rows={verifications.data?.verifications ?? []} empty="No verification results returned." columns={[{ key: "completed_at", label: "Completed" }, { key: "execution_id", label: "Execution" }, { key: "service", label: "Service" }, { key: "status", label: "Result", render: (row) => <Badge tone={verificationTone(row.status)}>{String(row.status ?? "-").replace(/_/g, " ")}</Badge> }, { key: "evidence_quality", label: "Evidence" }, { key: "rollback_status", label: "Rollback" }, { key: "comparisons", label: "Before / after", render: (row) => comparisonSummary(row.comparisons) }, { key: "summary", label: "Summary" }]} /></StatusPanel>
+        <StatusPanel title="Rollback Plans" loading={rollbackPlans.isLoading} error={rollbackPlans.error}><DataTable caption="Rollback plans" rows={rollbackPlans.data?.rollback_plans ?? []} empty="No rollback plans returned." columns={[{ key: "created_at", label: "Created" }, { key: "execution_id", label: "Execution" }, { key: "rollback_type", label: "Type" }, { key: "available", label: "Available" }, { key: "auto_executable", label: "Auto" }, { key: "status", label: "Status", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> }, { key: "reason", label: "Reason" }]} /></StatusPanel>
       </div>
       {liveResult ? <StatusPanel title="Latest Live Demo Result"><JsonBlock value={liveResult} /></StatusPanel> : null}
     </div>
@@ -190,6 +207,20 @@ function formatList(value: unknown) {
   return Array.isArray(value) && value.length ? value.join("; ") : "No data returned.";
 }
 
+function comparisonSummary(value: unknown) {
+  if (!Array.isArray(value) || !value.length) return "Insufficient evidence.";
+  return value.slice(0, 3).map((item) => {
+    const row = item && typeof item === "object" ? item as Record<string, unknown> : {};
+    return `${String(row.metric ?? "metric")} ${String(row.direction ?? "unchanged")}`;
+  }).join("; ");
+}
+
+function policyDecision(row: Record<string, unknown>) {
+  const direct = row.policy_decision;
+  const nested = (row.plan && typeof row.plan === "object" && !Array.isArray(row.plan) ? row.plan as Record<string, unknown> : {}).policy_decision;
+  return (direct && typeof direct === "object" && !Array.isArray(direct) ? direct : nested && typeof nested === "object" && !Array.isArray(nested) ? nested : {}) as Record<string, unknown>;
+}
+
 function compact(value: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== ""));
 }
@@ -208,5 +239,32 @@ function statusTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral
   if (status.includes("fail") || status.includes("invalid") || status.includes("error")) return "bad";
   if (status.includes("pending") || status.includes("dry")) return "info";
   if (status.includes("warn")) return "warn";
+  return "neutral";
+}
+
+function verificationTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "fixed" || status === "improved" || status === "rolled_back") return "good";
+  if (status === "unchanged" || status === "insufficient_evidence") return "warn";
+  if (status === "degraded" || status === "failed") return "bad";
+  return "neutral";
+}
+
+function policyTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" | "dry" {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "blocked") return "bad";
+  if (status === "requires_approval") return "warn";
+  if (status === "dry_run_only") return "dry";
+  if (status === "allowed_automatic") return "good";
+  if (status === "allowed") return "info";
+  return "neutral";
+}
+
+function riskTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" {
+  const risk = String(value ?? "").toLowerCase();
+  if (risk === "critical" || risk === "rejected") return "bad";
+  if (risk === "high") return "bad";
+  if (risk === "medium") return "warn";
+  if (risk === "low") return "good";
   return "neutral";
 }

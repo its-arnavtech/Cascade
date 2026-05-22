@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from services.shared.policy import AutonomyLevel, PolicyAction, PolicyConfig, PolicyMode, evaluate_action_policy
+
 from .schemas import RemediationPolicy, SafetyResult
 
 
@@ -16,6 +18,11 @@ def validate_plan(
     approved: bool = False,
     dry_run: bool = True,
     execution_enabled: bool = False,
+    mode: PolicyMode | None = None,
+    autonomy_level: int | AutonomyLevel | None = None,
+    dangerous_actions_enabled: bool = False,
+    local_demo_enabled: bool = False,
+    actions_used: int = 0,
 ) -> SafetyResult:
     policy = policy or default_policy()
     violations: list[str] = []
@@ -27,6 +34,15 @@ def validate_plan(
     rollback = plan.get("rollback_steps") or []
     post_checks = _post_checks(plan)
     manifest = plan.get("dry_run_manifest") or {}
+    policy_decision = evaluate_action_policy(
+        _policy_action(plan, dry_run=dry_run, approved=approved),
+        _policy_config(policy),
+        mode=mode or ("dry-run" if dry_run else "production-safe"),
+        autonomy_level=policy.autonomy_level_default if autonomy_level is None else autonomy_level,
+        dangerous_actions_enabled=dangerous_actions_enabled,
+        local_demo_enabled=local_demo_enabled,
+        actions_used=actions_used,
+    )
 
     if namespace in policy.denied_namespaces:
         violations.append(f"Namespace '{namespace}' is denied for remediation")
@@ -63,6 +79,12 @@ def validate_plan(
             violations.append("Rollback steps are required before execution")
         if policy.require_post_checks_for_execution and not post_checks:
             violations.append("Post-checks are required before execution")
+    if policy_decision.status == "blocked":
+        violations.extend(policy_decision.reasons)
+    elif policy_decision.status == "requires_approval" and not approved:
+        violations.extend(policy_decision.reasons)
+    else:
+        findings.extend(policy_decision.reasons)
 
     if not violations:
         findings.append("Action is bounded by deny-by-default remediation policy")
@@ -72,7 +94,7 @@ def validate_plan(
         elif action_type == "scale_deployment_noop":
             findings.append("Execution template is a no-op scale validation")
     risk = _risk_score(violations, action_type, bool(evidence))
-    return SafetyResult(allowed=not violations, risk_level=_risk_level(risk, violations), risk_score=risk, findings=findings, violations=violations)
+    return SafetyResult(allowed=not violations, risk_level=_risk_level(risk, violations), risk_score=risk, findings=_dedupe(findings), violations=_dedupe(violations), policy_decision=policy_decision.model_dump())
 
 
 def validate_approval(decision: str, approver: str, reason: str) -> list[str]:
@@ -113,6 +135,58 @@ def _post_checks(plan: dict[str, Any]) -> list[Any]:
     if checks is None:
         checks = ((plan.get("plan") or {}).get("plan") or {}).get("post_checks")
     return checks or []
+
+
+def _policy_config(policy: RemediationPolicy) -> PolicyConfig:
+    return PolicyConfig(
+        allowed_namespaces=policy.allowed_namespaces,
+        denied_namespaces=policy.denied_namespaces,
+        allowed_services=policy.allowed_services,
+        denied_services=policy.denied_services,
+        protected_services=policy.protected_services,
+        denied_resource_kinds=policy.denied_resource_kinds,
+        supported_actions=sorted(set(policy.supported_action_types + ["scale_deployment", "patch_resource", "apply_config_patch", "delete_pod", "evict_pod", "change_hpa", "run_chaos_experiment"])),
+        never_allowed_actions=PolicyConfig().never_allowed_actions,
+        action_budget=policy.action_budget,
+        max_blast_radius=policy.max_blast_radius,
+        max_auto_blast_radius=policy.max_auto_blast_radius,
+    )
+
+
+def _policy_action(plan: dict[str, Any], *, dry_run: bool, approved: bool) -> PolicyAction:
+    namespace = str(plan.get("namespace") or plan.get("target_namespace") or "")
+    service = str(plan.get("service") or plan.get("target_service") or "")
+    manifest = plan.get("dry_run_manifest") or {}
+    action_type = str(plan.get("action_type") or "")
+    return PolicyAction(
+        action_type=action_type,
+        target_namespace=namespace,
+        target_service=service,
+        target_deployment=service,
+        resource_kind=str(manifest.get("kind") or ("Deployment" if "deployment" in action_type else "")),
+        selector=plan.get("selector") or {},
+        blast_radius=_blast_radius(plan),
+        risk_level=str(plan.get("severity") or plan.get("risk_level") or ""),
+        risk_score=float(plan.get("risk_score") or 0.0),
+        rollback_available=bool(plan.get("rollback_steps")),
+        post_checks_available=bool(_post_checks(plan)),
+        dry_run=dry_run,
+        approved=approved,
+        metadata={"plan_id": plan.get("plan_id", "")},
+    )
+
+
+def _blast_radius(plan: dict[str, Any]) -> int:
+    explicit = plan.get("blast_radius") or plan.get("blast_radius_services") or plan.get("affected_services")
+    if isinstance(explicit, int | float):
+        return max(1, int(explicit))
+    if isinstance(explicit, list | tuple | set):
+        return max(1, len(explicit))
+    return 1
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
 
 
 def _contains_wildcard(value: Any) -> bool:

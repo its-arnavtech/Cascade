@@ -22,7 +22,7 @@ def build_plan(request: RemediationPlanRequest, evidence_refs: list[dict[str, An
     severity = _severity(context)
     plan_body = {
         "title": f"Remediation recommendation for {request.service}",
-        "summary": _summary(request, action_type, evidence_refs),
+        "summary": _summary(request, action_type, evidence_refs, context),
         "suspected_issue": _suspected_issue(context),
         "proposed_action": action_type,
         "pre_checks": pre_checks(request.service, request.namespace),
@@ -62,10 +62,16 @@ def build_plan(request: RemediationPlanRequest, evidence_refs: list[dict[str, An
     plan["status"] = "ready" if safety.allowed else "rejected"
     plan["risk_score"] = safety.risk_score
     plan["safety_findings"] = safety.findings + safety.violations
+    plan["policy_decision"] = safety.policy_decision
+    plan_body["human_approval_required"] = bool(safety.policy_decision.get("requires_approval", plan_body["human_approval_required"]))
+    plan_body["policy_decision"] = safety.policy_decision
     return plan
 
 
-def _summary(request: RemediationPlanRequest, action_type: str, evidence_refs: list[dict[str, Any]]) -> str:
+def _summary(request: RemediationPlanRequest, action_type: str, evidence_refs: list[dict[str, Any]], context: dict[str, Any]) -> str:
+    if context.get("source_rca_id"):
+        root = context.get("root_cause_service") or request.service
+        return f"Use {action_type} for {request.service} only after reviewing RCA {context['source_rca_id']} pointing to {root}; dry-run validation remains required."
     if evidence_refs:
         return f"Use {action_type} for {request.service} with {len(evidence_refs)} evidence reference(s) and dry-run validation before any execution."
     return f"Evidence is limited; use {action_type} to gather more data for {request.service} before considering mutation."
@@ -83,6 +89,11 @@ def _severity(context: dict[str, Any]) -> str:
 
 
 def _confidence(evidence_refs: list[dict[str, Any]], context: dict[str, Any]) -> float:
+    if context.get("source_rca_id"):
+        try:
+            return round(min(0.95, max(0.1, float(context.get("confidence", 0.0)) + 0.1)), 2)
+        except (TypeError, ValueError):
+            pass
     score = 0.25 + min(0.45, 0.12 * len(evidence_refs))
     if context.get("summary") or context.get("explanation"):
         score += 0.15

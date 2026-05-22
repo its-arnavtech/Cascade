@@ -1,6 +1,16 @@
 # Cascade Local Backup And Restore Runbook
 
-Cascade Hardening adds local helper scripts for ClickHouse and Qdrant backups. These are intended for the local kind environment and portfolio demos. They are not a substitute for production storage replication, tested offsite backups, or disaster recovery automation.
+Cascade Hardening adds local helper scripts for ClickHouse and Qdrant backups. These are intended for the local kind environment and portfolio demos. They are not a substitute for production storage replication, tested offsite backups, or disaster recovery automation. See `docs/durability.md` for PVCs, retention, and reset behavior.
+
+## Whole Cascade State
+
+Create one timestamped backup folder containing ClickHouse table exports, Qdrant snapshots, and Redpanda topic metadata:
+
+```powershell
+.\scripts\backup-cascade-state.ps1
+```
+
+The aggregate script delegates to the component scripts and writes a top-level manifest. It does not print secret values.
 
 ## ClickHouse
 
@@ -37,6 +47,7 @@ SHOW TABLES FROM cascade;
 SELECT count() FROM cascade.telemetry_events;
 SELECT count() FROM cascade.investigation_runs;
 SELECT count() FROM cascade.remediation_plans;
+SELECT count() FROM cascade.audit_events;
 ```
 
 ## Qdrant
@@ -74,7 +85,7 @@ The backup script uses Qdrant collection snapshots through a local `kubectl port
 
 ## Limitations
 
-- Local kind storage is not production durable.
+- Local kind storage uses PVCs and survives pod restarts, but it is not production HA.
 - Backups are written under `backups/`, which is gitignored by default.
 - Repeated demos and acceptance runs intentionally add rows; use latest-state queries for demos rather than assuming raw row counts are unique business objects.
 - Production deployments should use persistent volumes, scheduled backups, encryption at rest, restore drills, and off-cluster storage.

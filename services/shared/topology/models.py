@@ -7,8 +7,14 @@ from typing import Any
 @dataclass(frozen=True)
 class TopologyNode:
     id: str
+    name: str | None = None
     kind: str = "service"
     namespace: str | None = None
+    health_status: str | None = None
+    source_type: str = "unknown/fallback"
+    confidence: float = 0.5
+    last_seen: str | None = None
+    evidence: str = ""
     tier: str | None = None
     criticality: float = 0.5
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -18,7 +24,13 @@ class TopologyNode:
 class TopologyEdge:
     source: str
     target: str
+    id: str = ""
     relation: str = "depends_on"
+    namespace: str | None = None
+    source_type: str = "unknown/fallback"
+    confidence: float = 0.5
+    last_seen: str | None = None
+    evidence: str = ""
     weight: float = 1.0
     metadata: dict[str, Any] = field(default_factory=dict)
 

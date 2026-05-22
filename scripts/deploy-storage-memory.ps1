@@ -55,6 +55,8 @@ foreach ($image in $images) {
 }
 
 Write-Section "Deploy ClickHouse"
+kubectl apply -f infra/kubernetes/clickhouse/pvc.yaml
+Assert-NativeSuccess "Apply ClickHouse PVC"
 kubectl apply -f infra/kubernetes/clickhouse/deployment.yaml
 Assert-NativeSuccess "Apply ClickHouse deployment"
 kubectl apply -f infra/kubernetes/clickhouse/service.yaml
@@ -69,6 +71,8 @@ kubectl -n $Namespace wait --for=condition=complete job/clickhouse-schema-init -
 Assert-NativeSuccess "Wait for ClickHouse schema job"
 
 Write-Section "Deploy Qdrant"
+kubectl apply -f infra/kubernetes/qdrant/pvc.yaml
+Assert-NativeSuccess "Apply Qdrant PVC"
 kubectl apply -f infra/kubernetes/qdrant/deployment.yaml
 Assert-NativeSuccess "Apply Qdrant deployment"
 kubectl apply -f infra/kubernetes/qdrant/service.yaml
@@ -89,6 +93,11 @@ foreach ($path in @(
 )) {
     kubectl apply -f $path
     Assert-NativeSuccess "Apply $path"
+}
+
+foreach ($deployment in @("telemetry-archiver", "memory-indexer", "retrieval-service")) {
+    kubectl -n $Namespace rollout restart "deployment/$deployment"
+    Assert-NativeSuccess "Restart $deployment"
 }
 
 Write-Section "Wait For Storage and memory Rollouts"

@@ -8,6 +8,8 @@ WORKDIR /app
 COPY services/command-center-api/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
+COPY services/__init__.py /app/services/__init__.py
+COPY services/shared /app/services/shared
 COPY services/command-center-api/app /app/app
 
 EXPOSE 8031

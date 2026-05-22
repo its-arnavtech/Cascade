@@ -33,6 +33,7 @@ class AgentState(BaseModel):
     topology_evidence: list[dict[str, Any]] = Field(default_factory=list)
     blast_radius_evidence: list[dict[str, Any]] = Field(default_factory=list)
     causal_report_evidence: list[dict[str, Any]] = Field(default_factory=list)
+    rca_evidence: list[dict[str, Any]] = Field(default_factory=list)
     target_workload_evidence: list[dict[str, Any]] = Field(default_factory=list)
     knowledge_evidence: list[dict[str, Any]] = Field(default_factory=list)
     timeline_evidence: list[dict[str, Any]] = Field(default_factory=list)

@@ -41,6 +41,10 @@ spec:
               value: http://approval-service.cascade-system.svc.cluster.local:8022
             - name: REMEDIATION_EXECUTOR_SERVICE_URL
               value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
+            - name: AUTOPILOT_SERVICE_URL
+              value: http://autopilot-service.cascade-system.svc.cluster.local:8024
+            - name: SCHEDULER_SERVICE_URL
+              value: http://scheduler-service.cascade-system.svc.cluster.local:8025
             - name: ANOMALY_DETECTOR_SERVICE_URL
               value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
             - name: FEATURE_EXTRACTOR_SERVICE_URL
@@ -55,6 +59,16 @@ spec:
               value: "120"
             - name: RATE_LIMIT_BURST
               value: "60"
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:

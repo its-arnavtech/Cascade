@@ -11,6 +11,9 @@ from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services.shared.contracts import EVENT_TOPIC_CONTRACTS, contract_schema_bundle
+from services.shared.security.auth import AuthSettings, auth_status, require_auth
+
 logger = logging.getLogger("command-center-api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
@@ -28,6 +31,8 @@ class Settings(BaseSettings):
     remediation_recommender_service_url: str = "http://remediation-recommender-service.cascade-system.svc.cluster.local:8021"
     approval_service_url: str = "http://approval-service.cascade-system.svc.cluster.local:8022"
     remediation_executor_service_url: str = "http://remediation-executor-service.cascade-system.svc.cluster.local:8023"
+    autopilot_service_url: str = "http://autopilot-service.cascade-system.svc.cluster.local:8024"
+    scheduler_service_url: str = "http://scheduler-service.cascade-system.svc.cluster.local:8025"
     anomaly_detector_service_url: str = "http://anomaly-detector-service.cascade-system.svc.cluster.local:8014"
     feature_extractor_service_url: str = "http://feature-extractor-service.cascade-system.svc.cluster.local:8013"
     proxy_timeout_seconds: float = 10.0
@@ -35,6 +40,11 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_requests_per_minute: int = 120
     rate_limit_burst: int = 60
+    cascade_auth_enabled: bool = False
+    cascade_local_demo_auth_bypass: bool = False
+    cascade_api_keys: str = ""
+    cascade_api_key_hashes: str = ""
+    cascade_auth_header: str = "Authorization"
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
@@ -86,6 +96,8 @@ ROUTES: dict[str, str] = {
     "remediation/recommender": settings.remediation_recommender_service_url,
     "remediation/approval": settings.approval_service_url,
     "remediation/executor": settings.remediation_executor_service_url,
+    "autopilot": settings.autopilot_service_url,
+    "scheduler": settings.scheduler_service_url,
     "anomaly": settings.anomaly_detector_service_url,
     "features": settings.feature_extractor_service_url,
 }
@@ -97,21 +109,32 @@ SAFE_POST_PATHS = {
     ("topology", "topology/impact"),
     ("topology", "topology/blast-radius"),
     ("topology", "topology/critical-paths"),
+    ("topology", "topology/refresh"),
+    ("topology", "topology/traffic-inference"),
     ("causality", "causality/analyze"),
+    ("causality", "rca/analyze"),
     ("causal-reconstruction", "reconstruct"),
     ("timeline", "timeline"),
     ("timeline", "report"),
     ("agent", "investigations"),
     ("chaos/planner", "plans"),
+    ("chaos/planner", "campaigns"),
     ("chaos/executor", "runs"),
     ("remediation/recommender", "plans"),
+    ("remediation/recommender", "policy/evaluate"),
     ("remediation/approval", "approvals"),
+    ("remediation/executor", "safety/evaluate"),
     ("remediation/executor", "executions/dry-run"),
     ("remediation/executor", "executions"),
+    ("autopilot", "runs"),
+    ("scheduler", "scheduler/tick"),
+    ("scheduler", "scheduler/items"),
 }
 
 ROUTE_ALIASES: dict[str, tuple[str, str]] = {
     "topology/graph": ("topology", "topology/graph"),
+    "topology/evidence": ("topology", "topology/evidence"),
+    "topology/refresh": ("topology", "topology/refresh"),
     "topology/snapshot/latest": ("retrieval", "topology/snapshot/latest"),
 }
 
@@ -143,7 +166,7 @@ async def apply_rate_limit(request: Request, call_next):
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "command-center-api", "dangerous_actions_enabled": settings.enable_dangerous_actions}
+    return {"status": "ok", "service": "command-center-api", "dangerous_actions_enabled": settings.enable_dangerous_actions, **auth_status(_auth_settings())}
 
 
 @app.get("/ready")
@@ -171,9 +194,22 @@ async def live_demo_status() -> dict[str, Any]:
         remediation["disabled_reasons"].append(reason)
     return {
         "command_center": {"dangerous_actions_enabled": settings.enable_dangerous_actions},
+        "auth": auth_status(_auth_settings()),
         "chaos": chaos,
         "remediation": remediation,
         "target": target,
+    }
+
+
+@app.get("/api/contracts")
+async def integration_contracts() -> dict[str, Any]:
+    return {
+        "schema": contract_schema_bundle(),
+        "event_topics": {topic: model.__name__ for topic, model in EVENT_TOPIC_CONTRACTS.items()},
+        "correlation": {
+            "correlation_id": "Stable join key for a workflow; prefer Autopilot run_id when present, otherwise execution/report/event id.",
+            "run_id": "Concrete run identifier for Autopilot, chaos, model, campaign, or execution-specific workflows.",
+        },
     }
 
 
@@ -197,6 +233,7 @@ async def proxy(route: str, request: Request) -> Response:
 
     prefix, upstream_path = _resolve_route(route)
     body = await request.body()
+    _enforce_auth(prefix, upstream_path, request.method, request)
     _enforce_safety(prefix, upstream_path, request.method, body)
     target = f"{ROUTES[prefix].rstrip('/')}/{upstream_path}".rstrip("/")
     headers = _forward_headers(request.headers)
@@ -245,15 +282,61 @@ def _enforce_safety(prefix: str, upstream_path: str, method: str, body: bytes) -
     if settings.enable_dangerous_actions:
         return
     payload = _json_body(body)
-    if prefix == "remediation/executor" and normalized != "executions/dry-run":
+    if prefix == "remediation/executor" and normalized not in {"executions/dry-run", "safety/evaluate"}:
         raise HTTPException(status_code=403, detail="Real remediation execution is disabled by default")
     if prefix == "chaos/planner" and normalized == "plans" and payload.get("dry_run") is not True:
         raise HTTPException(status_code=403, detail="Only dry-run chaos plans are exposed by default")
+    if prefix == "chaos/planner" and normalized == "campaigns":
+        if payload.get("dry_run") is not True or payload.get("local_demo_execution_enabled") is True:
+            raise HTTPException(status_code=403, detail="Only dry-run chaos campaigns are exposed by default")
+    if prefix == "chaos/planner" and normalized.startswith("campaigns/") and normalized.endswith("/start"):
+        if payload.get("dry_run") is not True:
+            raise HTTPException(status_code=403, detail="Only dry-run chaos campaign starts are exposed by default")
     if prefix == "chaos/executor" and normalized == "runs":
         if payload.get("dry_run") is not True or payload.get("approved") is True:
             raise HTTPException(status_code=403, detail="Only chaos dry-run execution is exposed by default")
     if prefix == "remediation/executor" and normalized == "executions":
         raise HTTPException(status_code=403, detail="Real remediation execution is disabled by default")
+    if prefix == "scheduler" and normalized == "scheduler/items":
+        if payload.get("mode") not in {None, "dry_run_scheduler", "disabled"}:
+            raise HTTPException(status_code=403, detail="Only dry-run scheduler mode is exposed by default")
+        if payload.get("item_type") == "autopilot_run" and (payload.get("payload") or {}).get("mode") not in {None, "dry_run", "read_only"}:
+            raise HTTPException(status_code=403, detail="Scheduled Autopilot runs must remain dry_run or read_only")
+
+
+def _enforce_auth(prefix: str, upstream_path: str, method: str, request: Request) -> None:
+    if method != "POST":
+        return
+    normalized = upstream_path.strip("/")
+    if _is_sensitive_write(prefix, normalized):
+        require_auth(request, _auth_settings(), action=f"{prefix}/{normalized}")
+
+
+def _is_sensitive_write(prefix: str, normalized_path: str) -> bool:
+    if prefix == "remediation/approval" and normalized_path == "approvals":
+        return True
+    if prefix == "remediation/executor":
+        return normalized_path == "executions" or normalized_path.endswith("/execute") or normalized_path.endswith("/retry")
+    if prefix == "chaos/executor":
+        return normalized_path == "runs" or normalized_path.endswith("/cleanup") or normalized_path.endswith("/observe")
+    if prefix == "chaos/planner":
+        parts = normalized_path.split("/")
+        return len(parts) == 3 and parts[0] == "campaigns" and parts[2] in {"start", "pause", "resume", "stop"}
+    if prefix == "autopilot" and normalized_path == "runs":
+        return True
+    if prefix == "scheduler" and normalized_path.startswith("scheduler/") and normalized_path != "scheduler/status":
+        return True
+    return "wipe" in normalized_path or "reset" in normalized_path
+
+
+def _auth_settings() -> AuthSettings:
+    return AuthSettings(
+        enabled=settings.cascade_auth_enabled,
+        local_demo_bypass=settings.cascade_local_demo_auth_bypass,
+        api_keys=settings.cascade_api_keys,
+        api_key_hashes=settings.cascade_api_key_hashes,
+        auth_header=settings.cascade_auth_header,
+    )
 
 
 async def _optional_json(client: httpx.AsyncClient, base_url: str, path: str) -> dict[str, Any]:
@@ -312,7 +395,17 @@ def _policy_status(policy: dict[str, Any], safe_action: str, *, require_executio
 def _is_safe_analysis_post(prefix: str, normalized_path: str) -> bool:
     if prefix in {"chaos/planner", "remediation/recommender"}:
         parts = normalized_path.strip("/").split("/")
+        if prefix == "chaos/planner" and len(parts) == 3 and parts[0] == "campaigns" and parts[2] in {"start", "pause", "resume", "stop"}:
+            return True
         return len(parts) == 3 and parts[0] == "plans" and parts[2] == "validate"
+    if prefix == "scheduler":
+        parts = normalized_path.strip("/").split("/")
+        return (
+            len(parts) == 4
+            and parts[0] == "scheduler"
+            and parts[1] == "items"
+            and parts[3] in {"enable", "disable", "pause", "resume", "run"}
+        )
     return False
 
 

@@ -16,6 +16,7 @@ KNOWN_KINDS = {
     "Job",
     "Namespace",
     "NetworkPolicy",
+    "PersistentVolumeClaim",
     "Role",
     "RoleBinding",
     "Service",
@@ -26,6 +27,7 @@ SPEC_REQUIRED_KINDS = {
     "Deployment",
     "Job",
     "NetworkPolicy",
+    "PersistentVolumeClaim",
     "Service",
 }
 

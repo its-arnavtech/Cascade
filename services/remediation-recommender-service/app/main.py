@@ -9,6 +9,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, status
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services.shared.audit import build_audit_event, emit_audit_event
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
 from services.shared.remediation.events import remediation_event
@@ -135,9 +136,44 @@ async def validate_existing_plan(plan_id: str) -> dict[str, Any]:
     return {"plan_id": plan_id, **result.model_dump()}
 
 
+@app.post("/policy/evaluate")
+async def evaluate_policy(payload: dict[str, Any]) -> dict[str, Any]:
+    plan_id = str(payload.get("plan_id") or "")
+    if plan_id:
+        row = await clickhouse.remediation_plan(plan_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Plan not found")
+        plan = _decode_plan(row)
+    else:
+        plan = payload.get("plan") if isinstance(payload.get("plan"), dict) else payload
+    result = validate_plan(
+        plan,
+        default_policy(),
+        dry_run=bool(payload.get("dry_run", True)),
+        approved=bool(payload.get("approved", False)),
+        mode=str(payload.get("mode") or "dry-run"),  # type: ignore[arg-type]
+        autonomy_level=int(payload.get("autonomy_level", default_policy().autonomy_level_default)),
+    )
+    if plan.get("plan_id"):
+        await _audit(plan, result)
+    return {"policy_decision": result.policy_decision, "safety": result.model_dump()}
+
+
 async def _gather_evidence(payload: RemediationPlanRequest) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     context: dict[str, Any] = {"summary": ""}
+    rca = await _latest_rca(payload.service)
+    if rca:
+        evidence.append({"source": "clickhouse", "type": "rca", "id": str(rca.get("report_id") or ""), "summary": str(rca.get("explanation") or "")[:240]})
+        context.update(
+            {
+                "source_rca_id": rca.get("report_id", ""),
+                "summary": rca.get("explanation") or context.get("summary", ""),
+                "confidence": rca.get("confidence_score", 0.0),
+                "root_cause_service": rca.get("likely_root_cause_service", ""),
+                "affected_services": rca.get("affected_downstream_services", []),
+            }
+        )
     if payload.trigger_type == "anomaly" and payload.trigger_id:
         anomaly = await clickhouse.anomaly_detail(payload.trigger_id)
         if anomaly:
@@ -178,6 +214,18 @@ async def _gather_evidence(payload: RemediationPlanRequest) -> tuple[list[dict[s
     return evidence[:10], context
 
 
+async def _latest_rca(service: str) -> dict[str, Any] | None:
+    try:
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds) as client:
+            response = await client.get(settings.retrieval_service_url.rstrip("/") + "/rca/recent", params={"limit": 1, "service": service})
+            if response.status_code >= 500:
+                return None
+            reports = response.json().get("reports", [])
+            return reports[0] if reports else None
+    except Exception:
+        return None
+
+
 async def _insert_plan(plan: dict[str, Any]) -> None:
     now = _now()
     await clickhouse.insert_remediation_plan({
@@ -189,7 +237,27 @@ async def _insert_plan(plan: dict[str, Any]) -> None:
 
 
 async def _audit(plan: dict[str, Any], result: Any) -> None:
-    await clickhouse.insert_remediation_policy_audit({"audit_id": "rem_audit_" + plan["plan_id"][-12:] + "_" + datetime.now(UTC).strftime("%H%M%S%f"), "checked_at": _now(), "plan_id": plan["plan_id"], "action_type": plan["action_type"], "namespace": plan["namespace"], "service": plan["service"], "allowed": 1 if result.allowed else 0, "risk_level": result.risk_level, "findings_json": _json(result.findings + result.violations), "policy_json": _json(default_policy().model_dump())})
+    audit_id = "rem_audit_" + plan["plan_id"][-12:] + "_" + datetime.now(UTC).strftime("%H%M%S%f")
+    await clickhouse.insert_remediation_policy_audit({"audit_id": audit_id, "checked_at": _now(), "plan_id": plan["plan_id"], "action_type": plan["action_type"], "namespace": plan["namespace"], "service": plan["service"], "allowed": 1 if result.allowed else 0, "risk_level": result.risk_level, "findings_json": _json(result.findings + result.violations), "policy_json": _json({"policy": default_policy().model_dump(), "decision": result.policy_decision})})
+    await emit_audit_event(
+        clickhouse,
+        build_audit_event(
+            "policy.evaluated",
+            "policy",
+            severity="info" if result.allowed else "warning",
+            payload={"plan": plan, "decision": result.policy_decision, "findings": result.findings, "violations": result.violations},
+            correlation_id=plan["plan_id"],
+            service=plan["service"],
+            namespace=plan["namespace"],
+            action=plan["action_type"],
+            decision=str(result.policy_decision.get("status", "")),
+            status="allowed" if result.allowed else "blocked",
+            risk_level=result.risk_level,
+            policy_decision_id=audit_id,
+            evidence_summary="; ".join((result.findings + result.violations)[:3]),
+            user_safe_message=f"Policy {'allowed' if result.allowed else 'blocked'} {plan['action_type']} for {plan['service']}",
+        ),
+    )
 
 
 async def _violation(plan_id: str, execution_id: str, kind: str, severity: str, message: str, request: dict[str, Any]) -> None:
@@ -197,6 +265,24 @@ async def _violation(plan_id: str, execution_id: str, kind: str, severity: str, 
 
 
 async def _publish(event_type: str, plan: dict[str, Any], summary: str) -> None:
+    await emit_audit_event(
+        clickhouse,
+        build_audit_event(
+            event_type,
+            "remediation",
+            severity="warning" if event_type.endswith(".rejected") else "info",
+            payload=plan,
+            correlation_id=plan.get("plan_id", ""),
+            service=plan.get("service", ""),
+            namespace=plan.get("namespace", ""),
+            action=plan.get("action_type", event_type),
+            decision=str((plan.get("policy_decision") or {}).get("status", "")) if isinstance(plan.get("policy_decision"), dict) else "",
+            status=plan.get("status", ""),
+            risk_level=plan.get("risk_level", ""),
+            evidence_summary=summary,
+            user_safe_message=summary or f"Remediation event {event_type}",
+        ),
+    )
     if not settings.remediation_publish_events:
         return
     try:
@@ -220,6 +306,9 @@ def _decode_plan(row: dict[str, Any]) -> dict[str, Any]:
     decoded = dict(row)
     for key in ["remediation_steps_json", "rollback_steps_json", "evidence_refs_json", "safety_findings_json", "dry_run_manifest_json", "plan_json"]:
         decoded[key.replace("_json", "")] = _loads(decoded.pop(key, "[]" if key.endswith("steps_json") or key.endswith("refs_json") or key.endswith("findings_json") else "{}"))
+    plan_json = decoded.get("plan")
+    if isinstance(plan_json, dict):
+        decoded.setdefault("policy_decision", plan_json.get("policy_decision", {}))
     return decoded
 
 
