@@ -6,15 +6,18 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from services.shared.audit import build_audit_event, emit_audit_event
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
 from services.shared.remediation.approval import is_approval_current
 from services.shared.remediation.events import remediation_event
 from services.shared.remediation.safety import validate_approval
 from services.shared.remediation.schemas import ApprovalRequest
+from services.shared.security.approval import approval_metadata
+from services.shared.security.auth import AuthSettings, auth_status, require_auth
 from services.shared.storage.clickhouse_client import ClickHouseClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -25,6 +28,12 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "redpanda.cascade-system.svc.cluster.local:9092"
     remediation_events_topic: str = "remediation.actions"
     remediation_publish_events: bool = True
+    cascade_auth_enabled: bool = False
+    cascade_local_demo_auth_bypass: bool = False
+    cascade_api_keys: str = ""
+    cascade_api_key_hashes: str = ""
+    cascade_auth_header: str = "Authorization"
+    cascade_approval_signing_secret: str = ""
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 
@@ -50,7 +59,7 @@ async def shutdown() -> None:
 
 @app.get("/health")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "service": "approval-service"}
+    return {"status": "ok", "service": "approval-service", **auth_status(_auth_settings())}
 
 
 @app.get("/ready")
@@ -63,7 +72,8 @@ async def ready() -> dict[str, Any]:
 
 
 @app.post("/approvals")
-async def decide(payload: ApprovalRequest) -> dict[str, Any]:
+async def decide(payload: ApprovalRequest, request: Request) -> dict[str, Any]:
+    auth = require_auth(request, _auth_settings(), action="record approval decision")
     violations = validate_approval(payload.decision, payload.approver, payload.reason)
     if violations:
         raise HTTPException(status_code=400, detail={"violations": violations})
@@ -74,6 +84,16 @@ async def decide(payload: ApprovalRequest) -> dict[str, Any]:
         plan_type = "chaos"
     if plan_row is None:
         raise HTTPException(status_code=404, detail="Plan not found")
+    decoded_plan = _decode_plan(plan_row, plan_type)
+    metadata = approval_metadata(
+        plan=decoded_plan,
+        plan_type=plan_type,
+        actor=auth.get("actor") or payload.approver,
+        risk_level=str(decoded_plan.get("risk_level") or "unknown"),
+        policy_decision=decoded_plan.get("policy_decision") if isinstance(decoded_plan.get("policy_decision"), dict) else {},
+        expires_minutes=payload.expires_minutes,
+        signing_secret=settings.cascade_approval_signing_secret,
+    )
     approval = {
         "approval_id": "rem_approval_" + uuid.uuid4().hex[:16],
         "plan_id": payload.plan_id,
@@ -83,7 +103,7 @@ async def decide(payload: ApprovalRequest) -> dict[str, Any]:
         "approver_role": payload.approver_role,
         "reason": payload.reason,
         "expires_at": _future(payload.expires_minutes) if payload.decision == "approved" else None,
-        "metadata": {"source": "approval-service", "plan_type": plan_type, "expires_minutes": payload.expires_minutes},
+        "metadata": metadata,
     }
     await clickhouse.insert_remediation_approval({
         "approval_id": approval["approval_id"],
@@ -97,7 +117,7 @@ async def decide(payload: ApprovalRequest) -> dict[str, Any]:
         "approval_metadata_json": _json(approval["metadata"]),
     })
     event_type = "remediation.approved" if payload.decision == "approved" else "remediation.rejected"
-    await _publish(event_type, _decode_plan(plan_row, plan_type), approval, payload.reason)
+    await _publish(event_type, decoded_plan, approval, payload.reason)
     logger.info("approval decision=%s plan_id=%s approval_id=%s", payload.decision, payload.plan_id, approval["approval_id"])
     return {"approval": approval}
 
@@ -124,6 +144,26 @@ async def approval_status(plan_id: str) -> dict[str, Any]:
 
 
 async def _publish(event_type: str, plan: dict[str, Any], approval: dict[str, Any], summary: str) -> None:
+    service = plan.get("service") or plan.get("target_service", "")
+    namespace = plan.get("namespace") or plan.get("target_namespace", "")
+    await emit_audit_event(
+        clickhouse,
+        build_audit_event(
+            event_type,
+            "remediation" if approval.get("metadata", {}).get("plan_type") == "remediation" else "chaos",
+            severity="info" if approval.get("decision") == "approved" else "warning",
+            payload={"plan": plan, "approval": approval},
+            correlation_id=approval.get("plan_id", ""),
+            service=service,
+            namespace=namespace,
+            actor=approval.get("approver") or "unknown",
+            action=plan.get("action_type") or plan.get("experiment_kind") or event_type,
+            decision=approval.get("decision", ""),
+            status=approval.get("decision", ""),
+            evidence_summary=summary,
+            user_safe_message=f"{approval.get('approver', 'Operator')} {approval.get('decision')} {approval.get('plan_id')}",
+        ),
+    )
     if not settings.remediation_publish_events:
         return
     try:
@@ -159,6 +199,16 @@ def _loads(value: Any) -> Any:
 
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str, separators=(",", ":"))
+
+
+def _auth_settings() -> AuthSettings:
+    return AuthSettings(
+        enabled=settings.cascade_auth_enabled,
+        local_demo_bypass=settings.cascade_local_demo_auth_bypass,
+        api_keys=settings.cascade_api_keys,
+        api_key_hashes=settings.cascade_api_key_hashes,
+        auth_header=settings.cascade_auth_header,
+    )
 
 
 def _now() -> str:

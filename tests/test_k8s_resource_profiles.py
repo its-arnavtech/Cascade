@@ -14,6 +14,7 @@ FASTAPI_DEPLOYMENTS = {
     "agent-tool-gateway",
     "anomaly-detector-service",
     "approval-service",
+    "autopilot-service",
     "causal-reconstruction-service",
     "chaos-executor-service",
     "chaos-planner-service",
@@ -134,6 +135,56 @@ def test_core_infra_has_local_kind_runtime_caps() -> None:
     assert qdrant_env["QDRANT__SERVICE__MAX_WORKERS"] == "2"
     assert qdrant_env["QDRANT__STORAGE__PERFORMANCE__MAX_SEARCH_THREADS"] == "2"
     assert qdrant_env["QDRANT__STORAGE__OPTIMIZERS__MAX_OPTIMIZATION_THREADS"] == "1"
+
+
+def test_core_stateful_infra_uses_persistent_volume_claims() -> None:
+    deployments = {doc["metadata"]["name"]: doc for _, doc in _base_deployments()}
+    expected = {
+        "clickhouse": ("clickhouse-data", "/var/lib/clickhouse"),
+        "redpanda": ("redpanda-data", "/var/lib/redpanda/data"),
+        "qdrant": ("qdrant-data", "/qdrant/storage"),
+    }
+
+    for name, (claim_name, mount_path) in expected.items():
+        pod_spec = deployments[name]["spec"]["template"]["spec"]
+        volumes = pod_spec.get("volumes", [])
+        claims = [volume.get("persistentVolumeClaim", {}).get("claimName") for volume in volumes]
+        mounts = pod_spec["containers"][0].get("volumeMounts", [])
+        mount_paths = [mount.get("mountPath") for mount in mounts]
+
+        assert claim_name in claims
+        assert mount_path in mount_paths
+
+    root_kustomization = yaml.safe_load((K8S_ROOT / "kustomization.yaml").read_text(encoding="utf-8"))
+    for resource in ("clickhouse/pvc.yaml", "redpanda/pvc.yaml", "qdrant/pvc.yaml"):
+        assert resource in root_kustomization["resources"]
+
+
+def test_redpanda_topics_job_sets_retention() -> None:
+    text = (K8S_ROOT / "redpanda" / "topics-job.yaml").read_text(encoding="utf-8")
+
+    assert "retention.ms" in text
+    assert "retention.bytes" in text
+    assert "telemetry.raw 604800000" in text
+    assert "autopilot.runs 15552000000" in text
+
+
+def test_durability_scripts_exist_and_require_explicit_destructive_flags() -> None:
+    accept = (ROOT / "scripts" / "accept-durability.ps1").read_text(encoding="utf-8")
+    aggregate_backup = (ROOT / "scripts" / "backup-cascade-state.ps1").read_text(encoding="utf-8")
+    reset_storage = (ROOT / "scripts" / "reset-storage-memory.ps1").read_text(encoding="utf-8")
+    wipe_state = (ROOT / "scripts" / "wipe-cascade-state.ps1").read_text(encoding="utf-8")
+    restore_clickhouse = (ROOT / "scripts" / "restore-clickhouse.ps1").read_text(encoding="utf-8")
+    restore_qdrant = (ROOT / "scripts" / "restore-qdrant.ps1").read_text(encoding="utf-8")
+
+    assert "CASCADE DURABILITY ACCEPTANCE" in accept
+    assert "backup-clickhouse.ps1" in aggregate_backup
+    assert "backup-qdrant.ps1" in aggregate_backup
+    assert "WipePersistentData" in reset_storage
+    assert "ConfirmWipe" in wipe_state
+    assert "redpanda-data" in wipe_state
+    assert "ConfirmRestore" in restore_clickhouse
+    assert "ConfirmRestore" in restore_qdrant
 
 
 def test_low_resource_base_bundle_matches_root_kustomization_resources() -> None:

@@ -29,8 +29,27 @@ spec:
                 sleep 5
               done
 
-              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments remediation.actions causality.reports; do
-                rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" || true
+              configure_topic() {
+                topic="$1"
+                retention_ms="$2"
+                retention_bytes="$3"
+                rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" -c cleanup.policy=delete -c retention.ms="${retention_ms}" -c retention.bytes="${retention_bytes}" || true
+                rpk -X brokers="${REDPANDA_BROKERS}" topic alter-config "${topic}" --set cleanup.policy=delete --set retention.ms="${retention_ms}" --set retention.bytes="${retention_bytes}" || true
+                rpk -X brokers="${REDPANDA_BROKERS}" topic describe "${topic}" >/dev/null
+              }
+
+              configure_topic telemetry.raw 604800000 536870912
+              configure_topic telemetry.enriched 1209600000 1073741824
+              configure_topic experiments.events 7776000000 268435456
+              configure_topic anomalies.detected 7776000000 268435456
+              configure_topic agent.investigations 15552000000 268435456
+              configure_topic chaos.experiments 15552000000 268435456
+              configure_topic remediation.actions 15552000000 268435456
+              configure_topic causality.reports 15552000000 268435456
+              configure_topic autopilot.runs 15552000000 268435456
+
+              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments remediation.actions causality.reports autopilot.runs; do
+                rpk -X brokers="${REDPANDA_BROKERS}" topic describe "${topic}" >/dev/null
               done
 
               rpk -X brokers="${REDPANDA_BROKERS}" topic list

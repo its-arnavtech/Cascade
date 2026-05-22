@@ -1,0 +1,1881 @@
+{
+  "$defs": {
+    "AnomalyReport": {
+      "additionalProperties": true,
+      "properties": {
+        "anomaly_id": {
+          "title": "Anomaly Id",
+          "type": "string"
+        },
+        "anomaly_score": {
+          "default": 0.0,
+          "title": "Anomaly Score",
+          "type": "number"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "detected_at": {
+          "title": "Detected At",
+          "type": "string"
+        },
+        "detector_type": {
+          "default": "unknown",
+          "title": "Detector Type",
+          "type": "string"
+        },
+        "evidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvidenceBundle"
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            }
+          ],
+          "title": "Evidence"
+        },
+        "explanation": {
+          "default": "",
+          "title": "Explanation",
+          "type": "string"
+        },
+        "model_name": {
+          "default": "unknown",
+          "title": "Model Name",
+          "type": "string"
+        },
+        "risk_score": {
+          "default": 0.0,
+          "title": "Risk Score",
+          "type": "number"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.anomaly_report.v1",
+          "default": "cascade.anomaly_report.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/RiskLevel",
+          "default": "unknown"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        }
+      },
+      "required": [
+        "anomaly_id",
+        "detected_at"
+      ],
+      "title": "AnomalyReport",
+      "type": "object"
+    },
+    "AuditEvent": {
+      "additionalProperties": true,
+      "properties": {
+        "action": {
+          "default": "",
+          "title": "Action",
+          "type": "string"
+        },
+        "actor": {
+          "default": "cascade-system",
+          "title": "Actor",
+          "type": "string"
+        },
+        "autopilot_run_id": {
+          "default": "",
+          "title": "Autopilot Run Id",
+          "type": "string"
+        },
+        "campaign_id": {
+          "default": "",
+          "title": "Campaign Id",
+          "type": "string"
+        },
+        "chaos_experiment_id": {
+          "default": "",
+          "title": "Chaos Experiment Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "decision": {
+          "default": "",
+          "title": "Decision",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "title": "Event Type",
+          "type": "string"
+        },
+        "evidence_bundle_id": {
+          "default": "",
+          "title": "Evidence Bundle Id",
+          "type": "string"
+        },
+        "evidence_summary": {
+          "default": "",
+          "title": "Evidence Summary",
+          "type": "string"
+        },
+        "policy_decision_id": {
+          "default": "",
+          "title": "Policy Decision Id",
+          "type": "string"
+        },
+        "raw_payload_json": {
+          "default": "{}",
+          "title": "Raw Payload Json",
+          "type": "string"
+        },
+        "rca_report_id": {
+          "default": "",
+          "title": "Rca Report Id",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "default": "",
+          "title": "Recommendation Id",
+          "type": "string"
+        },
+        "remediation_execution_id": {
+          "default": "",
+          "title": "Remediation Execution Id",
+          "type": "string"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RiskLevel"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": "unknown",
+          "title": "Risk Level"
+        },
+        "rollback_plan_id": {
+          "default": "",
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.audit_event.v1",
+          "default": "cascade.audit_event.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "severity": {
+          "default": "info",
+          "title": "Severity",
+          "type": "string"
+        },
+        "status": {
+          "default": "",
+          "title": "Status",
+          "type": "string"
+        },
+        "subsystem": {
+          "title": "Subsystem",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "topology_snapshot_id": {
+          "default": "",
+          "title": "Topology Snapshot Id",
+          "type": "string"
+        },
+        "user_safe_message": {
+          "default": "",
+          "title": "User Safe Message",
+          "type": "string"
+        },
+        "verification_id": {
+          "default": "",
+          "title": "Verification Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_type",
+        "subsystem"
+      ],
+      "title": "AuditEvent",
+      "type": "object"
+    },
+    "AutopilotRun": {
+      "additionalProperties": true,
+      "properties": {
+        "anomaly_id": {
+          "default": "",
+          "title": "Anomaly Id",
+          "type": "string"
+        },
+        "chaos_experiment_id": {
+          "default": "",
+          "title": "Chaos Experiment Id",
+          "type": "string"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "evidence_bundle_id": {
+          "default": "",
+          "title": "Evidence Bundle Id",
+          "type": "string"
+        },
+        "execution_id": {
+          "default": "",
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "final_result": {
+          "default": "",
+          "title": "Final Result",
+          "type": "string"
+        },
+        "mode": {
+          "default": "dry_run",
+          "title": "Mode",
+          "type": "string"
+        },
+        "policy_decision_id": {
+          "default": "",
+          "title": "Policy Decision Id",
+          "type": "string"
+        },
+        "rca_report_id": {
+          "default": "",
+          "title": "Rca Report Id",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "default": "",
+          "title": "Recommendation Id",
+          "type": "string"
+        },
+        "remediation_plan_id": {
+          "default": "",
+          "title": "Remediation Plan Id",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "default": "",
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.autopilot_run.v1",
+          "default": "cascade.autopilot_run.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/AutopilotStep"
+          },
+          "title": "Steps",
+          "type": "array"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        },
+        "topology_snapshot_id": {
+          "default": "",
+          "title": "Topology Snapshot Id",
+          "type": "string"
+        },
+        "trigger_id": {
+          "default": "",
+          "title": "Trigger Id",
+          "type": "string"
+        },
+        "trigger_type": {
+          "default": "manual",
+          "title": "Trigger Type",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        },
+        "verification_id": {
+          "default": "",
+          "title": "Verification Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "title": "AutopilotRun",
+      "type": "object"
+    },
+    "AutopilotStep": {
+      "additionalProperties": true,
+      "properties": {
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "error_message": {
+          "default": "",
+          "title": "Error Message",
+          "type": "string"
+        },
+        "input": {
+          "additionalProperties": true,
+          "title": "Input",
+          "type": "object"
+        },
+        "output": {
+          "additionalProperties": true,
+          "title": "Output",
+          "type": "object"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.autopilot_step.v1",
+          "default": "cascade.autopilot_step.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "step_id": {
+          "title": "Step Id",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step_id",
+        "state",
+        "status"
+      ],
+      "title": "AutopilotStep",
+      "type": "object"
+    },
+    "ChaosCampaign": {
+      "additionalProperties": true,
+      "properties": {
+        "allowed_services": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Services",
+          "type": "array"
+        },
+        "campaign_id": {
+          "title": "Campaign Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "evidence_bundle_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Bundle Ids",
+          "type": "array"
+        },
+        "experiment_templates": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Experiment Templates",
+          "type": "array"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "run_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Run Ids",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "cascade.chaos_campaign.v1",
+          "default": "cascade.chaos_campaign.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        },
+        "target_namespace": {
+          "default": "unknown",
+          "title": "Target Namespace",
+          "type": "string"
+        },
+        "updated_at": {
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "campaign_id"
+      ],
+      "title": "ChaosCampaign",
+      "type": "object"
+    },
+    "ChaosExperiment": {
+      "additionalProperties": true,
+      "properties": {
+        "approved": {
+          "default": false,
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "evidence_bundle_id": {
+          "default": "",
+          "title": "Evidence Bundle Id",
+          "type": "string"
+        },
+        "experiment_id": {
+          "title": "Experiment Id",
+          "type": "string"
+        },
+        "experiment_kind": {
+          "default": "unknown",
+          "title": "Experiment Kind",
+          "type": "string"
+        },
+        "plan_id": {
+          "default": "",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "rca_report_id": {
+          "default": "",
+          "title": "Rca Report Id",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.chaos_experiment.v1",
+          "default": "cascade.chaos_experiment.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        },
+        "verification_id": {
+          "default": "",
+          "title": "Verification Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "experiment_id"
+      ],
+      "title": "ChaosExperiment",
+      "type": "object"
+    },
+    "ContractEnvelope": {
+      "additionalProperties": true,
+      "properties": {
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "emitted_at": {
+          "title": "Emitted At",
+          "type": "string"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_type": {
+          "title": "Event Type",
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "payload_schema": {
+          "default": "",
+          "title": "Payload Schema",
+          "type": "string"
+        },
+        "producer": {
+          "$ref": "#/$defs/ServiceIdentity"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.event_envelope.v1",
+          "default": "cascade.event_envelope.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "topic": {
+          "default": "",
+          "title": "Topic",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_type"
+      ],
+      "title": "ContractEnvelope",
+      "type": "object"
+    },
+    "EvidenceBundle": {
+      "additionalProperties": true,
+      "properties": {
+        "bundle_id": {
+          "title": "Bundle Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "metric_windows": {
+          "items": {
+            "$ref": "#/$defs/MetricWindow"
+          },
+          "title": "Metric Windows",
+          "type": "array"
+        },
+        "quality": {
+          "default": "insufficient_evidence",
+          "title": "Quality",
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Refs",
+          "type": "array"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.evidence_bundle.v1",
+          "default": "cascade.evidence_bundle.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        }
+      },
+      "title": "EvidenceBundle",
+      "type": "object"
+    },
+    "HealthState": {
+      "enum": [
+        "healthy",
+        "degraded",
+        "unhealthy",
+        "unknown",
+        "unavailable",
+        "insufficient_evidence",
+        "not_applicable"
+      ],
+      "title": "HealthState",
+      "type": "string"
+    },
+    "MetricWindow": {
+      "additionalProperties": true,
+      "properties": {
+        "availability_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Availability Rate"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "error_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Rate"
+        },
+        "event_count": {
+          "default": 0,
+          "title": "Event Count",
+          "type": "integer"
+        },
+        "evidence_quality": {
+          "default": "unknown",
+          "title": "Evidence Quality",
+          "type": "string"
+        },
+        "health_state": {
+          "$ref": "#/$defs/HealthState",
+          "default": "unknown"
+        },
+        "latency_p95_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency P95 Ms"
+        },
+        "latency_p99_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency P99 Ms"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "namespace": {
+          "default": "unknown",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "readiness_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Readiness Rate"
+        },
+        "request_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Rate"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.metric_window.v1",
+          "default": "cascade.metric_window.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "service": {
+          "default": "unknown",
+          "title": "Service",
+          "type": "string"
+        },
+        "window_end": {
+          "title": "Window End",
+          "type": "string"
+        },
+        "window_id": {
+          "title": "Window Id",
+          "type": "string"
+        },
+        "window_start": {
+          "title": "Window Start",
+          "type": "string"
+        }
+      },
+      "required": [
+        "window_id",
+        "window_start",
+        "window_end"
+      ],
+      "title": "MetricWindow",
+      "type": "object"
+    },
+    "PolicyDecision": {
+      "additionalProperties": true,
+      "properties": {
+        "action_type": {
+          "title": "Action Type",
+          "type": "string"
+        },
+        "allowed": {
+          "title": "Allowed",
+          "type": "boolean"
+        },
+        "allowed_automatically": {
+          "default": false,
+          "title": "Allowed Automatically",
+          "type": "boolean"
+        },
+        "autonomy_level": {
+          "default": 2,
+          "title": "Autonomy Level",
+          "type": "integer"
+        },
+        "blast_radius": {
+          "default": 0,
+          "title": "Blast Radius",
+          "type": "integer"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "decided_at": {
+          "title": "Decided At",
+          "type": "string"
+        },
+        "dry_run_only": {
+          "default": false,
+          "title": "Dry Run Only",
+          "type": "boolean"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyMode"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": "dry_run",
+          "title": "Mode"
+        },
+        "policy_decision_id": {
+          "title": "Policy Decision Id",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "recommendation_id": {
+          "default": "",
+          "title": "Recommendation Id",
+          "type": "string"
+        },
+        "required_autonomy_level": {
+          "default": 5,
+          "title": "Required Autonomy Level",
+          "type": "integer"
+        },
+        "requires_approval": {
+          "default": false,
+          "title": "Requires Approval",
+          "type": "boolean"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RiskLevel"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": "unknown",
+          "title": "Risk Level"
+        },
+        "risk_score": {
+          "default": 0.0,
+          "title": "Risk Score",
+          "type": "number"
+        },
+        "rollback_available": {
+          "default": false,
+          "title": "Rollback Available",
+          "type": "boolean"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.policy_decision.v1",
+          "default": "cascade.policy_decision.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "allowed",
+        "status",
+        "action_type"
+      ],
+      "title": "PolicyDecision",
+      "type": "object"
+    },
+    "PolicyMode": {
+      "enum": [
+        "read_only",
+        "dry_run",
+        "local_demo",
+        "production_safe"
+      ],
+      "title": "PolicyMode",
+      "type": "string"
+    },
+    "RCAReport": {
+      "additionalProperties": true,
+      "properties": {
+        "affected_downstream_services": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Downstream Services",
+          "type": "array"
+        },
+        "confidence_score": {
+          "default": 0.0,
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "explanation": {
+          "default": "",
+          "title": "Explanation",
+          "type": "string"
+        },
+        "generated_at": {
+          "title": "Generated At",
+          "type": "string"
+        },
+        "likely_root_cause_service": {
+          "default": "unknown",
+          "title": "Likely Root Cause Service",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "related_chaos_experiment": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Related Chaos Experiment"
+        },
+        "report_id": {
+          "title": "Report Id",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.rca.v1",
+          "default": "cascade.rca.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "default": "insufficient_evidence",
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        },
+        "target_service": {
+          "default": "unknown",
+          "title": "Target Service",
+          "type": "string"
+        },
+        "timeline": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Timeline",
+          "type": "array"
+        },
+        "topology_snapshot_id": {
+          "default": "",
+          "title": "Topology Snapshot Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "report_id",
+        "generated_at"
+      ],
+      "title": "RCAReport",
+      "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": true,
+      "properties": {
+        "action_type": {
+          "default": "investigate_only",
+          "title": "Action Type",
+          "type": "string"
+        },
+        "anomaly_id": {
+          "default": "",
+          "title": "Anomaly Id",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "evidence_bundle_id": {
+          "default": "",
+          "title": "Evidence Bundle Id",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "rca_report_id": {
+          "default": "",
+          "title": "Rca Report Id",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "title": "Recommendation Id",
+          "type": "string"
+        },
+        "risk_level": {
+          "$ref": "#/$defs/RiskLevel",
+          "default": "unknown"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.recommendation.v1",
+          "default": "cascade.recommendation.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        }
+      },
+      "title": "Recommendation",
+      "type": "object"
+    },
+    "RemediationExecution": {
+      "additionalProperties": true,
+      "properties": {
+        "action_type": {
+          "default": "unknown",
+          "title": "Action Type",
+          "type": "string"
+        },
+        "completed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Completed At"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "dry_run": {
+          "default": true,
+          "title": "Dry Run",
+          "type": "boolean"
+        },
+        "error_message": {
+          "default": "",
+          "title": "Error Message",
+          "type": "string"
+        },
+        "executed": {
+          "default": false,
+          "title": "Executed",
+          "type": "boolean"
+        },
+        "execution_id": {
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "namespace": {
+          "default": "unknown",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "output_summary": {
+          "default": "",
+          "title": "Output Summary",
+          "type": "string"
+        },
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "policy_decision_id": {
+          "default": "",
+          "title": "Policy Decision Id",
+          "type": "string"
+        },
+        "rollback_available": {
+          "default": false,
+          "title": "Rollback Available",
+          "type": "boolean"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.remediation_execution.v1",
+          "default": "cascade.remediation_execution.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "service": {
+          "default": "unknown",
+          "title": "Service",
+          "type": "string"
+        },
+        "started_at": {
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        }
+      },
+      "required": [
+        "execution_id",
+        "plan_id"
+      ],
+      "title": "RemediationExecution",
+      "type": "object"
+    },
+    "RemediationPlan": {
+      "additionalProperties": true,
+      "properties": {
+        "action_summary": {
+          "default": "",
+          "title": "Action Summary",
+          "type": "string"
+        },
+        "action_type": {
+          "default": "investigate_only",
+          "title": "Action Type",
+          "type": "string"
+        },
+        "confidence": {
+          "default": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "namespace": {
+          "default": "unknown",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "policy_decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyDecision"
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Policy Decision"
+        },
+        "post_checks": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Post Checks",
+          "type": "array"
+        },
+        "rca_report_id": {
+          "default": "",
+          "title": "Rca Report Id",
+          "type": "string"
+        },
+        "recommendation_id": {
+          "default": "",
+          "title": "Recommendation Id",
+          "type": "string"
+        },
+        "risk_level": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RiskLevel"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": "unknown",
+          "title": "Risk Level"
+        },
+        "rollback_steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Rollback Steps",
+          "type": "array"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.remediation_plan.v1",
+          "default": "cascade.remediation_plan.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "service": {
+          "default": "unknown",
+          "title": "Service",
+          "type": "string"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/TargetRef"
+        }
+      },
+      "required": [
+        "plan_id"
+      ],
+      "title": "RemediationPlan",
+      "type": "object"
+    },
+    "RiskLevel": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical",
+        "unknown",
+        "unavailable",
+        "insufficient_evidence",
+        "not_applicable"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "RollbackPlan": {
+      "additionalProperties": true,
+      "properties": {
+        "actions": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Actions",
+          "type": "array"
+        },
+        "auto_executable": {
+          "default": false,
+          "title": "Auto Executable",
+          "type": "boolean"
+        },
+        "available": {
+          "default": false,
+          "title": "Available",
+          "type": "boolean"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "execution_id": {
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "rollback_type": {
+          "default": "unknown",
+          "title": "Rollback Type",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.rollback_plan.v1",
+          "default": "cascade.rollback_plan.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "default": "unavailable",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rollback_plan_id",
+        "execution_id",
+        "plan_id"
+      ],
+      "title": "RollbackPlan",
+      "type": "object"
+    },
+    "ServiceIdentity": {
+      "additionalProperties": true,
+      "properties": {
+        "cluster": {
+          "default": "",
+          "title": "Cluster",
+          "type": "string"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "environment": {
+          "default": "",
+          "title": "Environment",
+          "type": "string"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Labels",
+          "type": "object"
+        },
+        "namespace": {
+          "default": "unknown",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.contracts.v1",
+          "default": "cascade.contracts.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "service": {
+          "default": "unknown",
+          "title": "Service",
+          "type": "string"
+        },
+        "workload": {
+          "default": "",
+          "title": "Workload",
+          "type": "string"
+        }
+      },
+      "title": "ServiceIdentity",
+      "type": "object"
+    },
+    "TargetRef": {
+      "additionalProperties": true,
+      "properties": {
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "namespace": {
+          "default": "unknown",
+          "title": "Namespace",
+          "type": "string"
+        },
+        "resource_kind": {
+          "default": "",
+          "title": "Resource Kind",
+          "type": "string"
+        },
+        "resource_name": {
+          "default": "",
+          "title": "Resource Name",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.contracts.v1",
+          "default": "cascade.contracts.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "selector": {
+          "additionalProperties": true,
+          "title": "Selector",
+          "type": "object"
+        },
+        "service": {
+          "default": "unknown",
+          "title": "Service",
+          "type": "string"
+        },
+        "workload": {
+          "default": "",
+          "title": "Workload",
+          "type": "string"
+        }
+      },
+      "title": "TargetRef",
+      "type": "object"
+    },
+    "TopologySnapshot": {
+      "additionalProperties": true,
+      "properties": {
+        "captured_at": {
+          "title": "Captured At",
+          "type": "string"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "dependencies": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Dependencies",
+          "type": "object"
+        },
+        "discovery_status": {
+          "default": "unknown",
+          "title": "Discovery Status",
+          "type": "string"
+        },
+        "edges": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Edges",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "nodes": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Nodes",
+          "type": "array"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.topology_snapshot.v1",
+          "default": "cascade.topology_snapshot.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "source_summary": {
+          "additionalProperties": true,
+          "title": "Source Summary",
+          "type": "object"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "captured_at"
+      ],
+      "title": "TopologySnapshot",
+      "type": "object"
+    },
+    "VerificationResult": {
+      "additionalProperties": true,
+      "properties": {
+        "after": {
+          "additionalProperties": true,
+          "title": "After",
+          "type": "object"
+        },
+        "before": {
+          "additionalProperties": true,
+          "title": "Before",
+          "type": "object"
+        },
+        "completed_at": {
+          "title": "Completed At",
+          "type": "string"
+        },
+        "correlation_id": {
+          "default": "",
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "evidence_quality": {
+          "default": "insufficient_evidence",
+          "title": "Evidence Quality",
+          "type": "string"
+        },
+        "execution_id": {
+          "title": "Execution Id",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "plan_id": {
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "rollback_status": {
+          "default": "not_applicable",
+          "title": "Rollback Status",
+          "type": "string"
+        },
+        "run_id": {
+          "default": "",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cascade.verification_result.v1",
+          "default": "cascade.verification_result.v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "status": {
+          "default": "insufficient_evidence",
+          "title": "Status",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "title": "Summary",
+          "type": "string"
+        },
+        "verification_id": {
+          "title": "Verification Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_id",
+        "execution_id",
+        "plan_id"
+      ],
+      "title": "VerificationResult",
+      "type": "object"
+    }
+  },
+  "$id": "https://cascade.local/schemas/cascade-contracts.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/AnomalyReport"
+    },
+    {
+      "$ref": "#/$defs/AuditEvent"
+    },
+    {
+      "$ref": "#/$defs/AutopilotRun"
+    },
+    {
+      "$ref": "#/$defs/AutopilotStep"
+    },
+    {
+      "$ref": "#/$defs/ChaosCampaign"
+    },
+    {
+      "$ref": "#/$defs/ChaosExperiment"
+    },
+    {
+      "$ref": "#/$defs/EvidenceBundle"
+    },
+    {
+      "$ref": "#/$defs/MetricWindow"
+    },
+    {
+      "$ref": "#/$defs/PolicyDecision"
+    },
+    {
+      "$ref": "#/$defs/RCAReport"
+    },
+    {
+      "$ref": "#/$defs/Recommendation"
+    },
+    {
+      "$ref": "#/$defs/RemediationExecution"
+    },
+    {
+      "$ref": "#/$defs/RemediationPlan"
+    },
+    {
+      "$ref": "#/$defs/RollbackPlan"
+    },
+    {
+      "$ref": "#/$defs/ServiceIdentity"
+    },
+    {
+      "$ref": "#/$defs/TargetRef"
+    },
+    {
+      "$ref": "#/$defs/TopologySnapshot"
+    },
+    {
+      "$ref": "#/$defs/VerificationResult"
+    }
+  ],
+  "title": "Cascade Integration Contracts",
+  "type": "object"
+}

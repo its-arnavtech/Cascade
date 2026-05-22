@@ -15,7 +15,7 @@ The observation service is Cascade's telemetry ingress service. It queries Prome
 
 ### `GET /snapshot`
 
-Queries Prometheus for pod CPU, memory, restart count, and pod phase in `TARGET_NAMESPACE`.
+Queries Prometheus for pod CPU, memory, restart count, pod phase, pod readiness, and RED service metrics in `TARGET_NAMESPACE`. RED metrics are collected when compatible `http_requests_total` and `http_request_duration_seconds_bucket` series exist.
 
 Example response:
 
@@ -31,17 +31,33 @@ Example response:
       "pod_phase": "Running",
       "cpu_usage_cores": 0.0123,
       "memory_working_set_bytes": 73400320,
-      "restart_count": 0
+      "restart_count": 0,
+      "request_rate": null,
+      "error_rate": null,
+      "latency_p95_ms": null,
+      "missing_metrics": ["request_rate", "error_rate", "latency_p95_ms"],
+      "metric_status": {
+        "request_rate": "empty"
+      },
+      "evidence_quality": "insufficient_data",
+      "used_kubernetes_fallback": false
     }
-  ]
+  ],
+  "query_status": {
+    "request_rate": {
+      "status": "empty",
+      "result_count": 0,
+      "warning": "Prometheus query succeeded but returned no samples."
+    }
+  }
 }
 ```
 
-If a metric is unavailable, that field is returned as `null`. If an entire Prometheus query fails, the snapshot still returns the data from the remaining successful queries.
+If a metric is unavailable, that field is returned as `null`, the metric name appears in `missing_metrics`, and query-level status explains whether the query was empty or failed. If Prometheus returns no pod samples, the service falls back to Kubernetes pod status and marks `used_kubernetes_fallback=true`.
 
 ### `GET /metrics/raw?query=<promql>`
 
-Passes a single instant PromQL expression through to Prometheus and returns the raw Prometheus JSON response.
+Passes a single instant PromQL expression through to Prometheus and returns the raw Prometheus JSON response plus `query_status`. Failed or empty queries are reported in-band so callers can distinguish missing data from healthy data.
 
 Example:
 

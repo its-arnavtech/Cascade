@@ -55,7 +55,14 @@ class TopologyGraph:
 
         nodes = [_node_from_metadata(node_id, metadata.get(node_id, {})) for node_id in sorted(node_ids)]
         edges = [
-            TopologyEdge(source=source_id, target=target_id)
+            TopologyEdge(
+                source=source_id,
+                target=target_id,
+                id=f"{source_id}->{target_id}",
+                source_type="static_catalog" if source in {"catalog", "target-catalog"} else "unknown/fallback",
+                confidence=0.85 if source in {"catalog", "target-catalog"} else 0.5,
+                evidence=f"Dependency edge declared by {source}.",
+            )
             for source_id, targets in dependencies.items()
             for target_id in dict.fromkeys(targets)
         ]
@@ -220,8 +227,14 @@ def _node_from_metadata(node_id: str, metadata: dict[str, Any]) -> TopologyNode:
         criticality_float = 0.5
     return TopologyNode(
         id=node_id,
+        name=str(metadata.get("name") or node_id),
         kind=str(metadata.get("kind", "service")),
         namespace=metadata.get("namespace"),
+        health_status=metadata.get("health_status") or metadata.get("status"),
+        source_type=str(metadata.get("source_type") or metadata.get("source") or "static_catalog"),
+        confidence=float(metadata.get("confidence", 0.75)),
+        last_seen=metadata.get("last_seen"),
+        evidence=str(metadata.get("evidence") or "Service declared in topology metadata."),
         tier=metadata.get("tier"),
         criticality=criticality_float,
         metadata={key: value for key, value in metadata.items() if key not in {"id", "name", "service", "service_name"}},

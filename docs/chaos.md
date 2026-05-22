@@ -34,6 +34,16 @@ Endpoints:
 - `GET /plans/{plan_id}`
 - `POST /plans/from-anomaly`
 - `POST /plans/{plan_id}/validate`
+- `POST /campaigns`
+- `GET /campaigns`
+- `GET /campaigns/{campaign_id}`
+- `POST /campaigns/{campaign_id}/start`
+- `POST /campaigns/{campaign_id}/pause`
+- `POST /campaigns/{campaign_id}/resume`
+- `POST /campaigns/{campaign_id}/stop`
+- `GET /campaign-runs`
+- `GET /campaigns/{campaign_id}/runs`
+- `GET /campaign-runs/{run_id}/report`
 
 ### chaos-executor-service
 
@@ -106,6 +116,23 @@ The executor ServiceAccount can get/list/watch pods and services in `cascade-tar
 
 Acceptance defaults to `pod_kill`.
 
+## Chaos Campaigns
+
+Chaos campaigns are repeatable sets of bounded templates. A campaign defines a name, target namespace, allowed services, experiment templates, schedule metadata, max experiments per run, blast-radius limit, cooldown, dry-run mode, and local-demo execution intent.
+
+Campaign starts are safe by default:
+
+- new campaigns default to dry-run
+- Command Center exposes only dry-run campaign creation and starts unless live-demo proxy gates are enabled
+- each template creates a normal chaos plan and reuses the existing safety validator
+- each experiment is executed by `chaos-executor-service`, so real execution still requires approval, dry-run-first history, local kind context, live-demo flags, and allowlists
+- blocked templates are recorded with reasons instead of bypassing policy
+- cleanup remains delegated to the existing executor, which deletes Cascade-managed Chaos Mesh resources during failure handling
+
+The first campaign implementation is manually/API triggered. Schedule metadata and `next_run_at` are stored so campaigns are repeatable, but there is no always-on background scheduler yet.
+
+Campaign reports include experiments run, services targeted, failures observed, RCA summaries from retrieval/RCA, recommendations, and skipped or blocked experiments with reasons.
+
 ## Observation And Scoring
 
 After a real run, the executor:
@@ -134,6 +161,9 @@ Chaos engineering adds:
 - `chaos_observations`
 - `resilience_scores`
 - `chaos_safety_violations`
+- `chaos_campaigns`
+- `chaos_campaign_runs`
+- `chaos_campaign_steps`
 
 `chaos_experiment_runs` stores lifecycle state transitions. The run APIs return the latest canonical row per `run_id` by default, so `/runs` shows one current state per run and `/runs/{run_id}` resolves completed or failed terminal state after cleanup.
 
@@ -168,10 +198,16 @@ Acceptance:
 .\scripts\accept-chaos.ps1
 ```
 
-Non-disruptive acceptance:
+Chaos acceptance is non-disruptive by default and skips live failure injection unless explicitly requested. The older explicit dry-run form is still accepted:
 
 ```powershell
 .\scripts\accept-chaos.ps1 -DryRunOnly
+```
+
+Only for authorized local/dev/staging clusters, opt in to the bounded live validation path:
+
+```powershell
+.\scripts\accept-chaos.ps1 -IncludeLiveChaos
 ```
 
 Demo:
@@ -179,6 +215,7 @@ Demo:
 ```powershell
 .\scripts\demo-chaos.ps1 -DryRunOnly
 .\scripts\demo-chaos.ps1 -TargetService catalogue -ObservationWindowSeconds 60
+.\scripts\demo-chaos-campaign.ps1
 ```
 
 Opt-in local live demo:
@@ -226,6 +263,7 @@ Use `-ClearChaosTables` only when intentionally clearing local Chaos engineering
 - Real execution is local demo mode only and remains disabled by default.
 - No remediation execution.
 - No autonomous agent-triggered chaos by default.
+- Campaign schedule metadata is persisted, but this MVP does not include a continuously running background scheduler.
 - Browser-based real execution is limited to local live-demo mode and the bounded `pod_kill` flow.
 - Network and stress experiments are local-limited and optional.
 - Resilience scores are baseline heuristics.

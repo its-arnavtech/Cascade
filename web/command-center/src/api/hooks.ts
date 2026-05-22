@@ -2,8 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, refreshIntervalMs } from "./client";
 import type {
   Anomaly,
+  AuditEvent,
+  AutopilotRun,
+  AutopilotStep,
   Approval,
   ChaosPlan,
+  ChaosCampaign,
+  ChaosCampaignRun,
   ChaosRun,
   CountMap,
   BlastRadius,
@@ -19,7 +24,13 @@ import type {
   PolicyAuditRecord,
   RemediationExecution,
   RemediationPlan,
+  RemediationRollbackPlan,
+  RemediationVerification,
   ResilienceScore,
+  RcaReport,
+  SchedulerDecision,
+  SchedulerItem,
+  SchedulerStatus,
   TargetWorkload,
   TelemetryEvent,
   TopologyGraph,
@@ -33,6 +44,19 @@ export function useCounts() {
 
 export function useTelemetry(filters: JsonRecord = {}) {
   return useQuery({ queryKey: ["telemetry", filters], queryFn: () => apiGet<{ events: TelemetryEvent[]; count: number }>("/retrieval/events/recent", filters), ...poll });
+}
+
+export function useAuditEvents(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["audit-events", filters], queryFn: () => apiGet<{ events: AuditEvent[]; count: number }>("/retrieval/audit/events", filters), ...poll });
+}
+
+export function useAuditTimeline(correlationId?: string) {
+  return useQuery({
+    queryKey: ["audit-timeline", correlationId],
+    enabled: Boolean(correlationId),
+    queryFn: () => apiGet<{ events: AuditEvent[]; count: number; correlation_id: string }>("/retrieval/audit/timeline", { correlation_id: correlationId }),
+    ...poll,
+  });
 }
 
 export function useExperiments(filters: JsonRecord = {}) {
@@ -102,6 +126,17 @@ export function useAnalyzeBlastRadius() {
   });
 }
 
+export function useRefreshTopology() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiPost<TopologyGraph>("/topology/topology/refresh", {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["topology-graph"] });
+      qc.invalidateQueries({ queryKey: ["target-workload"] });
+    },
+  });
+}
+
 export function useCausalIncidents() {
   return useQuery({ queryKey: ["causal-reports"], queryFn: () => apiGet<{ reports: CausalReport[]; count: number }>("/causality/causality/reports/recent"), ...poll });
 }
@@ -113,6 +148,16 @@ export function useCausalIncident(id?: string) {
 export function useAnalyzeCausality() {
   return useMutation({
     mutationFn: (body: { target_service?: string } & JsonRecord) => apiPost<{ report: CausalReport }>("/causality/causality/analyze", body),
+  });
+}
+
+export function useRcaReports(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["rca-reports", filters], queryFn: () => apiGet<{ reports: RcaReport[]; count: number }>("/causality/rca/recent", filters), ...poll });
+}
+
+export function useAnalyzeRca() {
+  return useMutation({
+    mutationFn: (body: { target_service?: string } & JsonRecord) => apiPost<{ report: RcaReport }>("/causality/rca/analyze", body),
   });
 }
 
@@ -159,6 +204,14 @@ export function useResilienceScores(filters: JsonRecord = {}) {
   return useQuery({ queryKey: ["resilience-scores", filters], queryFn: () => apiGet<{ scores: ResilienceScore[]; count: number }>("/chaos/executor/scores/recent", filters), ...poll });
 }
 
+export function useChaosCampaigns(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["chaos-campaigns", filters], queryFn: () => apiGet<{ campaigns: ChaosCampaign[]; count: number }>("/chaos/planner/campaigns", filters), ...poll });
+}
+
+export function useChaosCampaignRuns(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["chaos-campaign-runs", filters], queryFn: () => apiGet<{ runs: ChaosCampaignRun[]; count: number }>("/chaos/planner/campaign-runs", filters), ...poll });
+}
+
 export function useChaosPolicy() {
   return useQuery({ queryKey: ["chaos-policy"], queryFn: () => apiGet<JsonRecord>("/chaos/executor/safety/policy"), ...poll });
 }
@@ -183,6 +236,33 @@ export function useDryRunChaos() {
   });
 }
 
+export function useCreateChaosCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: JsonRecord) => apiPost<{ campaign: ChaosCampaign }>("/chaos/planner/campaigns", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chaos-campaigns"] }),
+  });
+}
+
+export function useStartChaosCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ campaignId, ...body }: { campaignId: string } & JsonRecord) => apiPost<{ run: ChaosCampaignRun; report: JsonRecord; steps: JsonRecord[] }>(`/chaos/planner/campaigns/${campaignId}/start`, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["chaos-campaigns"] });
+      qc.invalidateQueries({ queryKey: ["chaos-campaign-runs"] });
+    },
+  });
+}
+
+export function useControlChaosCampaign(action: "pause" | "resume" | "stop") {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (campaignId: string) => apiPost<{ campaign: ChaosCampaign }>(`/chaos/planner/campaigns/${campaignId}/${action}`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["chaos-campaigns"] }),
+  });
+}
+
 export function useExecuteChaos() {
   const qc = useQueryClient();
   return useMutation({
@@ -201,6 +281,14 @@ export function useApprovals(filters: JsonRecord = {}) {
 
 export function useExecutions(filters: JsonRecord = {}) {
   return useQuery({ queryKey: ["executions", filters], queryFn: () => apiGet<{ executions: RemediationExecution[]; count: number }>("/remediation/executor/executions", filters), ...poll });
+}
+
+export function useRemediationVerifications(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["remediation-verifications", filters], queryFn: () => apiGet<{ verifications: RemediationVerification[]; count: number }>("/remediation/executor/verifications", filters), ...poll });
+}
+
+export function useRemediationRollbackPlans(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["remediation-rollback-plans", filters], queryFn: () => apiGet<{ rollback_plans: RemediationRollbackPlan[]; count: number }>("/remediation/executor/rollback-plans", filters), ...poll });
 }
 
 export function useRemediationPolicy() {
@@ -248,6 +336,61 @@ export function useExecuteRemediation() {
   });
 }
 
+export function useAutopilotMode() {
+  return useQuery({ queryKey: ["autopilot-mode"], queryFn: () => apiGet<JsonRecord>("/autopilot/mode"), ...poll });
+}
+
+export function useAutopilotRuns(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["autopilot-runs", filters], queryFn: () => apiGet<{ runs: AutopilotRun[]; count: number }>("/autopilot/runs", filters), ...poll });
+}
+
+export function useAutopilotRun(id?: string) {
+  return useQuery({ queryKey: ["autopilot-run", id], enabled: Boolean(id), queryFn: () => apiGet<{ run: AutopilotRun; steps: AutopilotStep[] }>(`/autopilot/runs/${id}`), ...poll });
+}
+
+export function useCreateAutopilotRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: JsonRecord) => apiPost<{ run: AutopilotRun }>("/autopilot/runs", body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["autopilot-runs"] }),
+  });
+}
+
+export function useSchedulerStatus() {
+  return useQuery({ queryKey: ["scheduler-status"], queryFn: () => apiGet<SchedulerStatus>("/scheduler/scheduler/status"), ...poll });
+}
+
+export function useSchedulerItems() {
+  return useQuery({ queryKey: ["scheduler-items"], queryFn: () => apiGet<{ items: SchedulerItem[]; count: number }>("/scheduler/scheduler/items"), ...poll });
+}
+
+export function useSchedulerHistory(filters: JsonRecord = {}) {
+  return useQuery({ queryKey: ["scheduler-history", filters], queryFn: () => apiGet<{ decisions: SchedulerDecision[]; count: number }>("/scheduler/scheduler/history", filters), ...poll });
+}
+
+export function useControlSchedulerItem(action: "enable" | "disable" | "pause" | "resume" | "run") {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (itemId: string) => apiPost<JsonRecord>(`/scheduler/scheduler/items/${itemId}/${action}`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduler-status"] });
+      qc.invalidateQueries({ queryKey: ["scheduler-items"] });
+      qc.invalidateQueries({ queryKey: ["scheduler-history"] });
+    },
+  });
+}
+
+export function useCreateSchedulerItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: JsonRecord) => apiPost<{ item: SchedulerItem }>("/scheduler/scheduler/items", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduler-status"] });
+      qc.invalidateQueries({ queryKey: ["scheduler-items"] });
+    },
+  });
+}
+
 const healthTargets = [
   ["retrieval-service", "/retrieval/health"],
   ["knowledge-retrieval-service", "/knowledge/health"],
@@ -256,6 +399,8 @@ const healthTargets = [
   ["incident-timeline-service", "/timeline/health"],
   ["agent-tool-gateway", "/tools/health"],
   ["agent-orchestrator-service", "/agent/health"],
+  ["autopilot-service", "/autopilot/health"],
+  ["scheduler-service", "/scheduler/health"],
   ["chaos-planner-service", "/chaos/planner/health"],
   ["chaos-executor-service", "/chaos/executor/health"],
   ["remediation-recommender-service", "/remediation/recommender/health"],

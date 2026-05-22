@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { apiGet, apiPost } from "../api/client";
-import { useChaosPlans, useChaosPolicy, useChaosRuns, useCreateChaosPlan, useDryRunChaos, useLiveDemoStatus, useResilienceScores } from "../api/hooks";
+import { useChaosCampaignRuns, useChaosCampaigns, useChaosPlans, useChaosPolicy, useChaosRuns, useControlChaosCampaign, useCreateChaosCampaign, useCreateChaosPlan, useDryRunChaos, useLiveDemoStatus, useResilienceScores, useStartChaosCampaign } from "../api/hooks";
 import { AlertTriangle } from "lucide-react";
 import { Badge } from "../components/Badge";
 import { SafetyFindingsPanel, TargetWorkloadPanel } from "../components/IntelligencePanels";
@@ -12,11 +12,19 @@ export function ChaosPage() {
   const policy = useChaosPolicy();
   const plans = useChaosPlans({ limit: 20 });
   const runs = useChaosRuns({ limit: 20 });
+  const campaigns = useChaosCampaigns({ limit: 20 });
+  const campaignRuns = useChaosCampaignRuns({ limit: 20 });
   const scores = useResilienceScores({ limit: 20 });
   const liveStatus = useLiveDemoStatus();
   const create = useCreateChaosPlan();
+  const createCampaign = useCreateChaosCampaign();
+  const startCampaign = useStartChaosCampaign();
+  const pauseCampaign = useControlChaosCampaign("pause");
+  const resumeCampaign = useControlChaosCampaign("resume");
+  const stopCampaign = useControlChaosCampaign("stop");
   const dryRun = useDryRunChaos();
   const [form, setForm] = useState({ target_service: "", target_namespace: "", experiment_kind: "pod_kill", duration_seconds: 10, objective: "Validate service resilience with dry-run planning" });
+  const [campaignForm, setCampaignForm] = useState({ name: "Safe catalogue campaign", target_namespace: "cascade-targets", allowed_services: "catalogue,carts", experiment_kind: "pod_kill", max_experiments_per_run: 2, blast_radius_limit: 0.5, cooldown_seconds: 0 });
   const [confirmed, setConfirmed] = useState(false);
   const [liveResult, setLiveResult] = useState<Record<string, unknown> | undefined>();
   const [liveError, setLiveError] = useState("");
@@ -31,6 +39,29 @@ export function ChaosPage() {
   function submit(event: FormEvent) {
     event.preventDefault();
     create.mutate({ ...compact(form), duration_seconds: Number(form.duration_seconds), dry_run: true });
+  }
+
+  function submitCampaign(event: FormEvent) {
+    event.preventDefault();
+    const services = campaignForm.allowed_services.split(",").map((item) => item.trim()).filter(Boolean);
+    createCampaign.mutate({
+      name: campaignForm.name,
+      target_namespace: campaignForm.target_namespace,
+      allowed_services: services,
+      experiment_templates: services.map((service) => ({
+        name: `${campaignForm.experiment_kind} ${service}`,
+        experiment_kind: campaignForm.experiment_kind,
+        target_service: service,
+        duration_seconds: Math.min(Number(form.duration_seconds) || 10, 30),
+        dry_run: true,
+      })),
+      schedule: { trigger: "manual" },
+      max_experiments_per_run: Number(campaignForm.max_experiments_per_run),
+      blast_radius_limit: Number(campaignForm.blast_radius_limit),
+      cooldown_seconds: Number(campaignForm.cooldown_seconds),
+      dry_run: true,
+      local_demo_execution_enabled: false,
+    });
   }
 
   async function runLiveDemo(event: FormEvent) {
@@ -88,6 +119,20 @@ export function ChaosPage() {
       </form>
       {create.data ? <div className="state success">Created chaos plan {String(create.data.plan_id ?? "")}</div> : null}
       {create.error ? <div className="state error">{create.error.message}</div> : null}
+      <section className="panel">
+        <h3>Chaos Campaigns</h3>
+        <form className="form-grid two-column" onSubmit={submitCampaign}>
+          <div className="form-field"><label htmlFor="campaign-name">Campaign name</label><input id="campaign-name" value={campaignForm.name} onChange={(e) => setCampaignForm({ ...campaignForm, name: e.target.value })} /></div>
+          <div className="form-field"><label htmlFor="campaign-services">Allowed services</label><input id="campaign-services" value={campaignForm.allowed_services} onChange={(e) => setCampaignForm({ ...campaignForm, allowed_services: e.target.value })} /></div>
+          <div className="form-field"><label htmlFor="campaign-namespace">Namespace</label><input id="campaign-namespace" value={campaignForm.target_namespace} onChange={(e) => setCampaignForm({ ...campaignForm, target_namespace: e.target.value })} /></div>
+          <div className="form-field"><label htmlFor="campaign-kind">Template kind</label><select id="campaign-kind" value={campaignForm.experiment_kind} onChange={(e) => setCampaignForm({ ...campaignForm, experiment_kind: e.target.value })}><option>pod_kill</option><option>network_delay</option><option>stress_cpu</option></select></div>
+          <div className="form-field"><label htmlFor="campaign-max">Max experiments</label><input id="campaign-max" type="number" min={1} max={20} value={campaignForm.max_experiments_per_run} onChange={(e) => setCampaignForm({ ...campaignForm, max_experiments_per_run: Number(e.target.value) })} /></div>
+          <div className="form-field"><label htmlFor="campaign-blast">Blast limit</label><input id="campaign-blast" type="number" min={0} max={1} step={0.05} value={campaignForm.blast_radius_limit} onChange={(e) => setCampaignForm({ ...campaignForm, blast_radius_limit: Number(e.target.value) })} /></div>
+          <button type="submit" className="full" disabled={createCampaign.isPending}>Create dry-run campaign</button>
+        </form>
+        {createCampaign.data ? <div className="state success">Created campaign {String(createCampaign.data.campaign.campaign_id ?? "")}</div> : null}
+        {createCampaign.error ? <div className="state error">{createCampaign.error.message}</div> : null}
+      </section>
       {liveReady ? (
         <form className="form-grid two-column panel" onSubmit={runLiveDemo}>
           <h3 className="full">Local Live Demo Chaos</h3>
@@ -116,6 +161,31 @@ export function ChaosPage() {
       </div>
       <StatusPanel title="Chaos Plans" loading={plans.isLoading} error={plans.error}>
         <DataTable caption="Chaos plans" rows={plans.data?.plans ?? []} empty="No data returned." columns={[{ key: "created_at", label: "Created", width: "140px" }, { key: "target_service", label: "Service", width: "140px" }, { key: "experiment_kind", label: "Kind", width: "120px" }, { key: "blast_radius_score", label: "Blast", width: "90px", render: (row) => formatPercent(row.blast_radius_score) }, { key: "risk_level", label: "Risk", width: "100px", render: (row) => <Badge tone={riskTone(row.risk_level)}>{String(row.risk_level ?? "-")}</Badge> }, { key: "safety_findings", label: "Safety findings", render: (row) => formatList(row.safety_findings) }, { key: "dryrun", label: "Dry-run", width: "120px", align: "right", render: (row) => <button type="button" className="btn-dry compact" disabled={dryRun.isPending} onClick={() => dryRun.mutate({ plan_id: row.plan_id ?? "", observation_window_seconds: 10, trigger_agent_investigation: false })}>Dry-run -&gt;</button> }]} />
+      </StatusPanel>
+      <StatusPanel title="Chaos Campaigns" loading={campaigns.isLoading} error={campaigns.error}>
+        <DataTable caption="Chaos campaigns" rows={campaigns.data?.campaigns ?? []} empty="No campaigns returned." columns={[
+          { key: "name", label: "Name" },
+          { key: "status", label: "Status", width: "110px", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> },
+          { key: "target_namespace", label: "Namespace", width: "140px" },
+          { key: "allowed_services", label: "Services", render: (row) => Array.isArray(row.allowed_services) ? row.allowed_services.join(", ") : "-" },
+          { key: "max_experiments_per_run", label: "Max", width: "70px" },
+          { key: "blast_radius_limit", label: "Blast cap", width: "100px", render: (row) => formatPercent(row.blast_radius_limit) },
+          { key: "actions", label: "Actions", width: "260px", align: "right", render: (row) => {
+            const id = String(row.campaign_id ?? "");
+            return <span className="button-row"><button type="button" className="btn-dry compact" onClick={() => startCampaign.mutate({ campaignId: id, dry_run: true, requested_by: "command-center" })}>Start</button><button type="button" className="compact" onClick={() => pauseCampaign.mutate(id)}>Pause</button><button type="button" className="compact" onClick={() => resumeCampaign.mutate(id)}>Resume</button><button type="button" className="compact" onClick={() => stopCampaign.mutate(id)}>Stop</button></span>;
+          } },
+        ]} />
+      </StatusPanel>
+      <StatusPanel title="Campaign Runs" loading={campaignRuns.isLoading || startCampaign.isPending} error={campaignRuns.error || startCampaign.error}>
+        <DataTable caption="Chaos campaign runs" rows={campaignRuns.data?.runs ?? []} empty="No campaign runs returned." columns={[
+          { key: "started_at", label: "Started", width: "140px" },
+          { key: "status", label: "Status", width: "150px", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> },
+          { key: "services", label: "Services", render: (row) => Array.isArray(row.services) ? row.services.join(", ") : "-" },
+          { key: "experiments_succeeded", label: "Done", width: "70px" },
+          { key: "experiments_blocked", label: "Blocked", width: "90px" },
+          { key: "error_message", label: "Error" },
+        ]} />
+        {startCampaign.data ? <JsonBlock value={startCampaign.data.report} /> : null}
       </StatusPanel>
       <StatusPanel title="Chaos Runs" loading={runs.isLoading} error={runs.error}>
         <DataTable caption="Chaos runs" rows={runs.data?.runs ?? []} empty="No data returned." columns={[{ key: "started_at", label: "Started" }, { key: "target_service", label: "Service" }, { key: "experiment_kind", label: "Kind" }, { key: "dry_run", label: "Dry-run" }, { key: "cleanup_status", label: "Cleanup" }, { key: "status", label: "Status", render: (row) => <Badge tone={statusTone(row.status)}>{String(row.status ?? "-")}</Badge> }]} />

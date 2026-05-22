@@ -4,6 +4,7 @@ from dataclasses import asdict
 from typing import Any
 
 from services.shared.topology.graph import TopologyGraph
+from services.shared.topology.discovery import build_discovered_topology, discover_from_kubernetes, service_dependency_graph
 
 FALLBACK_DEPENDENCIES: dict[str, list[str]] = {
     "front-end": ["catalogue", "carts", "orders", "payment", "user"],
@@ -77,8 +78,27 @@ def impact(root_service: str) -> tuple[list[str], list[str]]:
     return graph().impact(root_service)
 
 
-def graph_payload() -> dict[str, Any]:
-    return graph().to_dict()
+async def discover_payload() -> dict[str, Any]:
+    try:
+        from services.shared.targets.catalog import ACTIVE_TARGET
+    except ImportError:
+        return graph().to_dict()
+    return await discover_from_kubernetes(ACTIVE_TARGET)
+
+
+def catalog_payload() -> dict[str, Any]:
+    try:
+        from services.shared.targets.catalog import ACTIVE_TARGET
+    except ImportError:
+        return graph().to_dict()
+    return build_discovered_topology(ACTIVE_TARGET, discovery_status="static_catalog")
+
+
+async def graph_payload() -> dict[str, Any]:
+    payload = await discover_payload()
+    if not payload.get("dependencies"):
+        payload["dependencies"] = service_dependency_graph(payload)
+    return payload
 
 
 def dependencies(service_name: str, hops: int = 2, direction: str = "downstream") -> list[str]:

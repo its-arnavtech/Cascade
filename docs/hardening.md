@@ -7,8 +7,11 @@ Hardening makes Cascade safer to run, easier to debug, easier to demo, and safer
 - Command Center UI deployment and acceptance remain the required final UI gate.
 - Command Center API includes local in-memory rate limiting.
 - Redpanda topic checks use exact topic matching and shared helper logic.
-- ClickHouse and Qdrant backup/list/restore helpers are available.
+- ClickHouse, Redpanda, and Qdrant use local PVCs with low-resource overlay sizing.
+- ClickHouse and Qdrant backup/list/restore helpers are available, plus an aggregate Cascade state backup.
+- Redpanda topics have explicit local retention defaults.
 - Secret audit and `.gitignore` hardening reduce publish risk.
+- `docs/security.md` documents local mode, production-safe auth, approval binding, RBAC, ingress/TLS, and secret hygiene.
 - Live chaos/remediation demo scripts require explicit local-kind opt-in, approval, and dry-run-first validation.
 - `accept-all.ps1` provides a single end-to-end acceptance runner.
 - `debug-all.ps1` creates a local support bundle.
@@ -25,11 +28,17 @@ Hardening makes Cascade safer to run, easier to debug, easier to demo, and safer
 
 This is local single-pod protection only. Production should use an ingress, API gateway, or shared backing store such as Redis.
 
+## Security
+
+See [security.md](security.md) for Cascade's configurable auth guard, sensitive route protection, approval binding, least-privilege RBAC expectations, ingress/TLS guidance, and known limitations.
+
 ## Backups
 
 ClickHouse scripts export schema and table data under `backups/clickhouse/<timestamp>/`.
 
 Qdrant scripts create collection snapshots under `backups/qdrant/<timestamp>/`.
+
+`backup-cascade-state.ps1` creates an aggregate folder with ClickHouse exports, Qdrant snapshots, Redpanda topic metadata, and a top-level manifest.
 
 Restore scripts are dry-run by default and require `-ConfirmRestore`.
 
@@ -71,4 +80,3 @@ The scanner reports suspicious keys without values and fails on high-confidence 
 - Scheduled off-cluster backups.
 - Restore drills in CI.
 - Ingress/TLS/WAF configuration.
-- Durable Redpanda retention policy.

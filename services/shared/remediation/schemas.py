@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,10 @@ class ExecutionRequest(BaseModel):
     dry_run: bool = False
 
 
+VerificationStatus = Literal["fixed", "improved", "unchanged", "degraded", "failed", "rolled_back", "insufficient_evidence"]
+RollbackStatus = Literal["not_needed", "available", "unavailable", "executed", "failed", "disabled"]
+
+
 class RemediationPolicy(BaseModel):
     allowed_namespaces: list[str] = Field(default_factory=lambda: [ACTIVE_NAMESPACE])
     denied_namespaces: list[str] = Field(default_factory=lambda: ["kube-system", "kube-public", "kube-node-lease", "local-path-storage", "monitoring", "cascade-system", "default"])
@@ -47,6 +51,10 @@ class RemediationPolicy(BaseModel):
     require_post_checks_for_execution: bool = True
     execution_enabled_default: bool = False
     cascade_chaos_cleanup_labels: dict[str, str] = Field(default_factory=lambda: {"cascade.io/phase": "phase7", "cascade.io/managed-by": "chaos-executor-service"})
+    autonomy_level_default: int = 2
+    action_budget: int = 3
+    max_blast_radius: int = 3
+    max_auto_blast_radius: int = 1
 
 
 class SafetyResult(BaseModel):
@@ -55,6 +63,7 @@ class SafetyResult(BaseModel):
     risk_score: float
     findings: list[str] = Field(default_factory=list)
     violations: list[str] = Field(default_factory=list)
+    policy_decision: dict[str, Any] = Field(default_factory=dict)
 
 
 class RemediationPlan(BaseModel):
@@ -79,5 +88,46 @@ class RemediationPlan(BaseModel):
     evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
     safety_findings: list[str] = Field(default_factory=list)
     dry_run_manifest: dict[str, Any] = Field(default_factory=dict)
+    policy_decision: dict[str, Any] = Field(default_factory=dict)
     plan: dict[str, Any] = Field(default_factory=dict)
+
+
+class RollbackPlan(BaseModel):
+    rollback_plan_id: str
+    execution_id: str
+    plan_id: str
+    created_at: str
+    updated_at: str
+    action_type: str
+    namespace: str
+    service: str
+    rollback_type: str = ""
+    available: bool = False
+    auto_executable: bool = False
+    status: RollbackStatus = "unavailable"
+    reason: str = ""
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    result: dict[str, Any] = Field(default_factory=dict)
+
+
+class VerificationResult(BaseModel):
+    verification_id: str
+    execution_id: str
+    plan_id: str
+    rollback_plan_id: str = ""
+    created_at: str
+    completed_at: str
+    action_type: str
+    namespace: str
+    service: str
+    status: VerificationStatus
+    evidence_quality: str = "insufficient"
+    rollback_status: RollbackStatus = "not_needed"
+    summary: str = ""
+    before: dict[str, Any] = Field(default_factory=dict)
+    after: dict[str, Any] = Field(default_factory=dict)
+    comparisons: list[dict[str, Any]] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    rollback: dict[str, Any] = Field(default_factory=dict)
 

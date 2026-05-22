@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
-import type { CSSProperties } from "react";
-import { AlertTriangle, BarChart3, Database, Layers3, Search, ShieldCheck, Sparkles } from "lucide-react";
-import { useAnomalies, useApprovals, useCounts, useExecutions, useExperiments, useFeatureWindows, useIncidents, useInvestigations, useKnowledgeStats, useLiveDemoStatus, useRemediationPlans, useResilienceScores, useSystemHealth, useTelemetry, useTopologyGraph } from "../api/hooks";
+import type { CSSProperties, ReactNode } from "react";
+import { AlertTriangle, BarChart3, Bot, Database, GitBranch, Layers3, Search, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { useAnomalies, useApprovals, useAutopilotRuns, useChaosPlans, useChaosRuns, useCounts, useExecutions, useExperiments, useFeatureWindows, useIncidents, useInvestigations, useKnowledgeStats, useLiveDemoStatus, useRcaReports, useRemediationPlans, useRemediationRollbackPlans, useRemediationVerifications, useResilienceScores, useSystemHealth, useTelemetry, useTopologyGraph } from "../api/hooks";
 import { Badge } from "../components/Badge";
 import { TargetWorkloadPanel, TopologyGraphView } from "../components/IntelligencePanels";
 import { StatCard } from "../components/cards/StatCard";
@@ -17,10 +17,16 @@ export function OverviewPage() {
   const experiments = useExperiments({ limit: 60 });
   const incidents = useIncidents({ limit: 6 });
   const investigations = useInvestigations({ limit: 4 });
+  const rca = useRcaReports({ limit: 5 });
+  const autopilot = useAutopilotRuns({ limit: 5 });
   const scores = useResilienceScores({ limit: 8 });
+  const chaosPlans = useChaosPlans({ limit: 5 });
+  const chaosRuns = useChaosRuns({ limit: 5 });
   const remediation = useRemediationPlans({ limit: 5 });
   const approvals = useApprovals({ limit: 5 });
   const executions = useExecutions({ limit: 5 });
+  const verifications = useRemediationVerifications({ limit: 5 });
+  const rollbacks = useRemediationRollbackPlans({ limit: 5 });
   const liveStatus = useLiveDemoStatus();
   const knowledgeStats = useKnowledgeStats();
   const topology = useTopologyGraph();
@@ -28,14 +34,62 @@ export function OverviewPage() {
   const safetyScore = health.data?.length ? Math.round(((health.data.length - degradedCount) / health.data.length) * 100) : undefined;
   const latestIncident = incidents.data?.incidents?.[0];
   const latestAnomaly = anomalies.data?.anomalies?.[0];
+  const latestRca = rca.data?.reports?.[0];
 
   return (
     <div className="page overview-page">
+      <DemoModePanel liveStatus={liveStatus.data} />
       <div className="metric-grid">
         <StatCard icon={BarChart3} tone="info" label="Telemetry Events" value={formatNumber(counts.data?.telemetry_events)} detail={counts.isFetching ? "Refreshing from API" : "From retrieval counts"} trend="up" />
         <StatCard icon={AlertTriangle} tone={Number(counts.data?.anomaly_events ?? 0) > 0 ? "warn" : "good"} label="Active Anomalies" value={formatNumber(counts.data?.anomaly_events)} detail={`${anomalies.data?.count ?? 0} recent signals`} trend={Number(counts.data?.anomaly_events ?? 0) > 0 ? "up" : undefined} />
         <StatCard icon={Database} tone="violet" label="Knowledge Chunks" value={formatNumber(counts.data?.knowledge_chunks ?? knowledgeStats.data?.knowledge_chunks ?? knowledgeStats.data?.chunks)} detail="Indexed evidence corpus" trend="up" />
         <StatCard icon={ShieldCheck} tone="good" label="Safety Gates" value={safetyScore == null ? "-" : `${safetyScore}%`} detail={degradedCount ? `${degradedCount} checks degraded` : "Execution locked by policy"} trend={degradedCount ? "down" : "up"} />
+      </div>
+
+      <div className="work-status-grid">
+        <StatusPanel title="Active Anomalies" loading={anomalies.isLoading} error={anomalies.error}>
+          <DataTable
+            caption="Active anomalies"
+            rows={anomalies.data?.anomalies ?? []}
+            empty="No active anomaly records returned."
+            columns={[
+              { key: "detected_at", label: "Detected", width: "130px", render: (row) => shortTime(row.detected_at) },
+              { key: "service", label: "Service", width: "140px", render: (row) => <code className="inline-code">{String(row.service ?? "-")}</code> },
+              { key: "severity", label: "Severity", width: "100px", render: (row) => <Badge tone={severityTone(row.severity)}>{String(row.severity ?? "-")}</Badge> },
+              { key: "risk_score", label: "Risk", width: "80px", render: (row) => formatScore(row.risk_score) },
+              { key: "explanation", label: "Evidence" },
+            ]}
+          />
+        </StatusPanel>
+        <StatusPanel title="Recent RCA" loading={rca.isLoading} error={rca.error}>
+          <EvidenceSummary
+            icon={<GitBranch size={18} />}
+            title={String(latestRca?.likely_root_cause_service ?? "No root cause asserted")}
+            subtitle={String(latestRca?.explanation ?? "No RCA evidence bundle returned. Run RCA after telemetry and topology are available.")}
+            badge={<Badge tone={rcaTone(latestRca?.status)}>{String(latestRca?.status ?? "insufficient evidence").replace(/_/g, " ")}</Badge>}
+            facts={[
+              ["Target", latestRca?.target_service],
+              ["Confidence", formatScore(latestRca?.confidence_score)],
+              ["Affected", arrayLength(latestRca?.affected_downstream_services) ? `${arrayLength(latestRca?.affected_downstream_services)} services` : "No affected services returned"],
+            ]}
+            to="/causality"
+          />
+        </StatusPanel>
+        <StatusPanel title="Autopilot Runs" loading={autopilot.isLoading} error={autopilot.error}>
+          <RunStatusPanel runs={autopilot.data?.runs ?? []} />
+        </StatusPanel>
+      </div>
+
+      <div className="work-status-grid">
+        <StatusPanel title="Remediation Status" loading={remediation.isLoading || approvals.isLoading || executions.isLoading} error={remediation.error ?? approvals.error ?? executions.error}>
+          <RemediationStatus plans={remediation.data?.plans ?? []} approvals={approvals.data?.approvals ?? []} executions={executions.data?.executions ?? []} />
+        </StatusPanel>
+        <StatusPanel title="Verification / Rollback" loading={verifications.isLoading || rollbacks.isLoading} error={verifications.error ?? rollbacks.error}>
+          <VerificationStatus verifications={verifications.data?.verifications ?? []} rollbacks={rollbacks.data?.rollback_plans ?? []} />
+        </StatusPanel>
+        <StatusPanel title="Chaos Experiments" loading={chaosPlans.isLoading || chaosRuns.isLoading || experiments.isLoading} error={chaosPlans.error ?? chaosRuns.error ?? experiments.error}>
+          <ChaosStatus plans={chaosPlans.data?.plans ?? []} runs={chaosRuns.data?.runs ?? []} experiments={experiments.data?.experiments ?? []} />
+        </StatusPanel>
       </div>
 
       <div className="overview-grid">
@@ -85,8 +139,8 @@ export function OverviewPage() {
             <div className="next-step">
               <span className="next-step-icon"><Sparkles size={18} /></span>
               <div className="next-step-copy">
-                <strong>{recommendedTitle(latestIncident, latestAnomaly).title}{recommendedTitle(latestIncident, latestAnomaly).service ? <code>{recommendedTitle(latestIncident, latestAnomaly).service}</code> : null}</strong>
-                <p>{investigations.data?.count ? `${investigations.data.count} investigation records available for comparison.` : `${remediation.data?.count ?? 0} remediation plans available for review.`}</p>
+                <strong>{recommendedTitle(latestIncident, latestAnomaly, latestRca).title}{recommendedTitle(latestIncident, latestAnomaly, latestRca).service ? <code>{recommendedTitle(latestIncident, latestAnomaly, latestRca).service}</code> : null}</strong>
+                <p>{latestRca?.explanation ? String(latestRca.explanation) : investigations.data?.count ? `${investigations.data.count} investigation records available for comparison.` : `${remediation.data?.count ?? 0} remediation plans available for review.`}</p>
               </div>
               <Link className="outline-action" to="/investigations">Start Investigation</Link>
             </div>
@@ -94,6 +148,133 @@ export function OverviewPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function DemoModePanel({ liveStatus }: { liveStatus?: Record<string, unknown> }) {
+  const command = liveStatus?.command_center as Record<string, unknown> | undefined;
+  const chaos = liveStatus?.chaos as Record<string, unknown> | undefined;
+  const remediation = liveStatus?.remediation as Record<string, unknown> | undefined;
+  const localDemo = Boolean(command?.dangerous_actions_enabled || chaos?.live_demo_mode || remediation?.live_demo_mode);
+  return (
+    <section className="panel demo-helper">
+      <div>
+        <div className="status-chip-row">
+          <Badge tone="good">read-only</Badge>
+          <Badge tone="dry">dry-run</Badge>
+          <Badge tone={localDemo ? "bad" : "neutral"}>{localDemo ? "local-demo" : "production-safe"}</Badge>
+          <Badge tone="info">live data</Badge>
+        </div>
+        <h2>Cascade Demo Cockpit</h2>
+        <p>Start with validation, generate telemetry, then run dry-run chaos, remediation, and Autopilot. Real actions stay disabled unless local demo mode is explicitly enabled.</p>
+      </div>
+      <div className="demo-command-list" aria-label="Safe demo commands">
+        <code>.\scripts\demo-command-center.ps1 -Stage Validate</code>
+        <code>.\scripts\demo-command-center.ps1 -Stage Telemetry</code>
+        <code>.\scripts\demo-command-center.ps1 -Stage Autopilot</code>
+      </div>
+      <Link className="outline-action" to="/system">Check System</Link>
+    </section>
+  );
+}
+
+function EvidenceSummary({ icon, title, subtitle, badge, facts, to }: { icon: ReactNode; title: string; subtitle: string; badge: ReactNode; facts: Array<[string, unknown]>; to: string }) {
+  return (
+    <div className="demo-summary-card">
+      <div className="intel-summary">
+        <span className="intel-icon">{icon}</span>
+        <div>
+          <strong>{title}</strong>
+          <span>{subtitle}</span>
+        </div>
+        {badge}
+      </div>
+      <div className="demo-facts">
+        {facts.map(([label, value]) => <div key={label}><span>{label}</span><strong>{String(value ?? "No data returned.")}</strong></div>)}
+      </div>
+      <Link className="outline-action" to={to}>Open Evidence</Link>
+    </div>
+  );
+}
+
+function RunStatusPanel({ runs }: { runs: Record<string, unknown>[] }) {
+  const latest = runs[0];
+  if (!latest) return <div className="state state-compact"><strong>No Autopilot runs yet</strong><span>Run a dry-run Autopilot loop from the Autopilot page or demo script.</span></div>;
+  const states = autopilotStates(latest);
+  return (
+    <div className="demo-summary-card">
+      <div className="intel-summary">
+        <span className="intel-icon"><Bot size={18} /></span>
+        <div>
+          <strong>{String(latest.final_result || latest.status || "Run recorded")}</strong>
+          <span>{String(latest.service || "manual")} in {String(latest.mode || "dry_run")} mode</span>
+        </div>
+        <Badge tone={statusTone(latest.final_result ?? latest.status)}>{String(latest.final_result || latest.status || "unknown")}</Badge>
+      </div>
+      <div className="autopilot-state-strip">
+        {states.map((item) => <span className={item.done ? "done" : item.blocked ? "blocked" : ""} key={item.label}>{item.label}</span>)}
+      </div>
+      <Link className="outline-action" to="/autopilot">Open Autopilot</Link>
+    </div>
+  );
+}
+
+function RemediationStatus({ plans, approvals, executions }: { plans: Record<string, unknown>[]; approvals: Record<string, unknown>[]; executions: Record<string, unknown>[] }) {
+  const latestPlan = plans[0];
+  const latestApproval = approvals[0];
+  const latestExecution = executions[0];
+  return (
+    <EvidenceSummary
+      icon={<ShieldCheck size={18} />}
+      title={String(latestPlan?.action_summary ?? latestPlan?.action_type ?? "No remediation plan returned")}
+      subtitle={latestExecution ? String(latestExecution.output_summary ?? latestExecution.validation_status ?? "Execution record returned") : "Plan, approval, and dry-run status appear here."}
+      badge={<Badge tone={policyTone(policyDecision(latestPlan ?? {}).status ?? latestExecution?.validation_status)}>{String(policyDecision(latestPlan ?? {}).status ?? latestExecution?.validation_status ?? "dry-run ready").replace(/_/g, " ")}</Badge>}
+      facts={[
+        ["Plan", latestPlan?.plan_id ?? "none"],
+        ["Approval", latestApproval?.decision ?? "none"],
+        ["Dry-run", latestExecution?.dry_run === true ? "completed" : "not run"],
+      ]}
+      to="/remediation"
+    />
+  );
+}
+
+function VerificationStatus({ verifications, rollbacks }: { verifications: Record<string, unknown>[]; rollbacks: Record<string, unknown>[] }) {
+  const latestVerification = verifications[0];
+  const latestRollback = rollbacks[0];
+  return (
+    <EvidenceSummary
+      icon={<ShieldCheck size={18} />}
+      title={String(latestVerification?.status ?? "No verification result returned")}
+      subtitle={String(latestVerification?.summary ?? latestRollback?.reason ?? "Verification and rollback records appear after remediation dry-runs or executions.")}
+      badge={<Badge tone={verificationTone(latestVerification?.status ?? latestRollback?.status)}>{String(latestVerification?.status ?? latestRollback?.status ?? "insufficient evidence").replace(/_/g, " ")}</Badge>}
+      facts={[
+        ["Evidence", latestVerification?.evidence_quality ?? "none"],
+        ["Rollback", latestRollback?.available === true ? "available" : latestRollback?.available === false ? "unavailable" : "not returned"],
+        ["Auto", latestRollback?.auto_executable === true ? "yes" : "no"],
+      ]}
+      to="/remediation"
+    />
+  );
+}
+
+function ChaosStatus({ plans, runs, experiments }: { plans: Record<string, unknown>[]; runs: Record<string, unknown>[]; experiments: Record<string, unknown>[] }) {
+  const latestPlan = plans[0];
+  const latestRun = runs[0];
+  const latestExperiment = experiments[0];
+  return (
+    <EvidenceSummary
+      icon={<Zap size={18} />}
+      title={String(latestRun?.status ?? latestPlan?.status ?? "No chaos run returned")}
+      subtitle={String(latestPlan?.objective ?? latestExperiment?.event_type ?? "Dry-run chaos plans and bounded local demo runs appear here.")}
+      badge={<Badge tone={latestRun?.dry_run === true ? "dry" : statusTone(latestRun?.status ?? latestPlan?.status)}>{latestRun?.dry_run === true ? "dry-run" : String(latestRun?.status ?? "planned")}</Badge>}
+      facts={[
+        ["Plan", latestPlan?.plan_id ?? "none"],
+        ["Run", latestRun?.run_id ?? "none"],
+        ["Cleanup", latestRun?.cleanup_status ?? "not run"],
+      ]}
+      to="/chaos"
+    />
   );
 }
 
@@ -247,6 +428,65 @@ function formatNumber(value: unknown) {
   return new Intl.NumberFormat("en-US", { notation: number >= 1_000_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(number);
 }
 
+function formatScore(value: unknown) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return number <= 1 ? `${Math.round(number * 100)}%` : String(Math.round(number));
+}
+
+function arrayLength(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function rcaTone(value: unknown): "good" | "warn" | "bad" | "teal" | "info" | "neutral" | "dry" {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "ranked") return "teal";
+  if (status.includes("insufficient")) return "warn";
+  if (status.includes("low")) return "info";
+  return "neutral";
+}
+
+function policyDecision(row: Record<string, unknown>) {
+  const direct = row.policy_decision;
+  const nested = (row.plan && typeof row.plan === "object" && !Array.isArray(row.plan) ? row.plan as Record<string, unknown> : {}).policy_decision;
+  return (direct && typeof direct === "object" && !Array.isArray(direct) ? direct : nested && typeof nested === "object" && !Array.isArray(nested) ? nested : {}) as Record<string, unknown>;
+}
+
+function policyTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" | "dry" {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "blocked") return "bad";
+  if (status === "requires_approval") return "warn";
+  if (status === "dry_run_only") return "dry";
+  if (status === "allowed_automatic") return "good";
+  if (status === "allowed") return "info";
+  return "neutral";
+}
+
+function verificationTone(value: unknown): "good" | "warn" | "bad" | "info" | "neutral" {
+  const status = String(value ?? "").toLowerCase();
+  if (status === "fixed" || status === "improved" || status === "rolled_back" || status.includes("valid")) return "good";
+  if (status === "unchanged" || status === "insufficient_evidence" || status.includes("missing")) return "warn";
+  if (status === "degraded" || status === "failed" || status.includes("error")) return "bad";
+  if (status.includes("pending") || status.includes("dry")) return "info";
+  return "neutral";
+}
+
+function autopilotStates(run: Record<string, unknown>) {
+  const evidence = run.evidence && typeof run.evidence === "object" ? run.evidence as Record<string, unknown> : {};
+  const recommendation = run.recommendation && typeof run.recommendation === "object" ? run.recommendation as Record<string, unknown> : {};
+  const action = run.action && typeof run.action === "object" ? run.action as Record<string, unknown> : {};
+  const verification = run.verification && typeof run.verification === "object" ? run.verification as Record<string, unknown> : {};
+  const final = String(run.final_result ?? run.status ?? "").toLowerCase();
+  return [
+    { label: "investigated", done: Boolean(run.investigation_id || evidence.summary || run.evidence) },
+    { label: "planned", done: Boolean(run.remediation_plan_id || recommendation.plan_id || run.recommendation) },
+    { label: "policy checked", done: Boolean(recommendation.policy_decision || action.policy_decision || run.action) },
+    { label: "dry-run", done: Boolean(run.dry_run_execution_id || action.dry_run_validation) },
+    { label: final.includes("blocked") ? "blocked" : "executed", done: Boolean(run.execution_id), blocked: final.includes("blocked") || action.executed === false },
+    { label: "verified", done: Boolean(verification.status || run.verification) },
+  ];
+}
+
 function clamp(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
@@ -276,7 +516,8 @@ function shortTime(value: unknown) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function recommendedTitle(incident?: Record<string, unknown>, anomaly?: Record<string, unknown>) {
+function recommendedTitle(incident?: Record<string, unknown>, anomaly?: Record<string, unknown>, rca?: Record<string, unknown>) {
+  if (rca?.likely_root_cause_service) return { title: "Review RCA evidence for ", service: String(rca.likely_root_cause_service) };
   if (incident?.title) return { title: `Investigate ${String(incident.title).toLowerCase()}` };
   if (anomaly?.service) return { title: "Investigate elevated signal in ", service: String(anomaly.service) };
   return { title: "Review current reliability signals" };

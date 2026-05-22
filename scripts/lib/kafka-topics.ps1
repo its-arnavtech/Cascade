@@ -6,8 +6,21 @@ $CascadeRequiredRedpandaTopics = @(
     "agent.investigations",
     "chaos.experiments",
     "remediation.actions",
+    "autopilot.runs",
     "causality.reports"
 )
+
+$CascadeRedpandaTopicRetention = @{
+    "telemetry.raw" = @{ RetentionMs = 604800000; RetentionBytes = 536870912 }
+    "telemetry.enriched" = @{ RetentionMs = 1209600000; RetentionBytes = 1073741824 }
+    "experiments.events" = @{ RetentionMs = 7776000000; RetentionBytes = 268435456 }
+    "anomalies.detected" = @{ RetentionMs = 7776000000; RetentionBytes = 268435456 }
+    "agent.investigations" = @{ RetentionMs = 15552000000; RetentionBytes = 268435456 }
+    "chaos.experiments" = @{ RetentionMs = 15552000000; RetentionBytes = 268435456 }
+    "remediation.actions" = @{ RetentionMs = 15552000000; RetentionBytes = 268435456 }
+    "autopilot.runs" = @{ RetentionMs = 15552000000; RetentionBytes = 268435456 }
+    "causality.reports" = @{ RetentionMs = 15552000000; RetentionBytes = 268435456 }
+}
 
 function Get-CascadeRedpandaTopicNames {
     param(
@@ -111,8 +124,12 @@ function Ensure-CascadeRedpandaTopics {
 
         $podName = ($podOutput -join "").Trim()
         foreach ($topic in $Topics) {
+            $retention = $CascadeRedpandaTopicRetention[$topic]
+            if ($null -eq $retention) {
+                $retention = @{ RetentionMs = 7776000000; RetentionBytes = 268435456 }
+            }
             try {
-                $createOutput = & kubectl -n $Namespace exec $podName -- rpk -X brokers=localhost:9092 topic create $topic 2>&1
+                $createOutput = & kubectl -n $Namespace exec $podName -- rpk -X brokers=localhost:9092 topic create $topic -c cleanup.policy=delete -c retention.ms=$($retention.RetentionMs) -c retention.bytes=$($retention.RetentionBytes) 2>&1
                 $createExitCode = $LASTEXITCODE
             } catch {
                 $createOutput = @($_.Exception.Message)
@@ -121,6 +138,10 @@ function Ensure-CascadeRedpandaTopics {
             $lastRaw = ($createOutput -join "`n")
             if ($createExitCode -ne 0 -and $lastRaw -notmatch "already exists|Topic with this name already exists|TOPIC_ALREADY_EXISTS") {
                 $lastError = $lastRaw
+            }
+            try {
+                & kubectl -n $Namespace exec $podName -- rpk -X brokers=localhost:9092 topic alter-config $topic --set cleanup.policy=delete --set retention.ms=$($retention.RetentionMs) --set retention.bytes=$($retention.RetentionBytes) 2>&1 | Out-Null
+            } catch {
             }
         }
 

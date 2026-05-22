@@ -36,6 +36,7 @@ spec:
               curl -sf -X PATCH http://qdrant:6333/collections/cascade_incident_memory \
                 -H 'Content-Type: application/json' \
                 --data '{"optimizers_config":{"indexing_threshold":1000}}'
+              curl -sf http://qdrant:6333/collections/cascade_incident_memory >/dev/null
               code="$(curl -s -o /tmp/qdrant-knowledge-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_knowledge_base \
                 -H 'Content-Type: application/json' \
                 --data '{"vectors":{"size":128,"distance":"Cosine"},"optimizers_config":{"indexing_threshold":1000}}')"
@@ -44,6 +45,7 @@ spec:
                 curl -sf -X PATCH http://qdrant:6333/collections/cascade_knowledge_base \
                   -H 'Content-Type: application/json' \
                   --data '{"optimizers_config":{"indexing_threshold":1000}}'
+                curl -sf http://qdrant:6333/collections/cascade_knowledge_base >/dev/null
                 exit 0
               fi
               cat /tmp/qdrant-knowledge-init-response

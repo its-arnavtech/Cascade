@@ -13,6 +13,8 @@ incidents/anomalies/investigations/chaos scores/knowledge
 -> remediation-executor-service
 -> dry-run validation / optional gated execution
 -> ClickHouse remediation_executions
+-> post-action verification / rollback plan
+-> ClickHouse remediation_verification_results + remediation_rollback_plans
 -> Redpanda remediation.actions
 ```
 
@@ -20,7 +22,7 @@ incidents/anomalies/investigations/chaos scores/knowledge
 
 - `remediation-recommender-service`: deterministic plan generation, evidence gathering, rollback/runbook steps, safety validation, plan persistence, and `remediation.plan.created` events.
 - `approval-service`: explicit human approve/reject records with approver metadata, reasons, expiration, and approval lifecycle events. It never executes actions.
-- `remediation-executor-service`: policy re-validation, Kubernetes server-side dry-run where applicable, execution records, safety violations, and optional allowlisted execution when deliberately enabled.
+- `remediation-executor-service`: policy re-validation, Kubernetes server-side dry-run where applicable, execution records, post-remediation verification, rollback plans, safety violations, and optional allowlisted execution when deliberately enabled.
 
 ## Safety Model
 
@@ -37,6 +39,19 @@ Safety is deny-by-default:
 - `EXECUTION_ENABLED=false` by default blocks real execution.
 - live-demo execution also requires `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, `CASCADE_LIVE_DEMO_MODE=true`, the allowlisted local context, and a prior successful dry-run.
 - no arbitrary shell commands or LLM-generated executable commands are accepted.
+
+Remediation plans and executions also pass through the shared policy engine documented in [policy-engine.md](policy-engine.md). The policy engine classifies actions as `allowed`, `blocked`, `dry_run_only`, `requires_approval`, or `allowed_automatic` and records reasons, risk level, blast radius, approval requirement, and rollback availability. The decision is attached to generated plans as `policy_decision` and is written to policy audit rows during validation.
+
+Autonomy levels are explicit:
+
+- Level 0: read-only investigation only.
+- Level 1: recommend only.
+- Level 2: dry-run fixes only.
+- Level 3: auto-apply low-risk fixes.
+- Level 4: require approval for risky fixes.
+- Level 5: never allowed actions.
+
+The default remediation autonomy is dry-run oriented. Local live-demo execution can use a higher configured level, but approval, dry-run-first, rollback, post-check, namespace, protected-service, and live-demo gates still run server-side.
 
 ## Supported Action Types
 
@@ -73,6 +88,22 @@ Default Remediation workflows are dry-run only. `POST /executions/dry-run` store
 
 The default deployment sets `EXECUTION_ENABLED=false`, so acceptance verifies that real execution is rejected.
 
+## Verification And Rollback Evidence
+
+When real execution is deliberately enabled, the executor captures a pre-action baseline, builds a rollback plan from the captured state, applies the action, waits a bounded stabilization window, captures post-action evidence, and stores a verification result. Evidence is drawn from Kubernetes deployment/pod readiness and events, recent feature windows, anomaly rows, and resilience scores where available.
+
+Verification status is one of `fixed`, `improved`, `unchanged`, `degraded`, `failed`, `rolled_back`, or `insufficient_evidence`. Cascade does not report success when comparable metrics are missing; it records `insufficient_evidence` with limitations instead.
+
+Rollback remains safe by default. Deployment replica rollback is executable when a previous replica count was captured. Deployment restart rollback is marked non-reversible unless previous template metadata exists, and automatic rollback is disabled unless `REMEDIATION_AUTO_ROLLBACK_ENABLED=true` is explicitly set on the executor. Patch/config/HPA rollback plans record a clear unavailable reason until those action types store reversible resource snapshots.
+
+Read APIs:
+
+- `GET /verifications`
+- `GET /verifications/{verification_id}`
+- `GET /executions/{execution_id}/verification`
+- `GET /rollback-plans`
+- `GET /rollback-plans/{rollback_plan_id}`
+
 ## Opt-in Local Live Demo
 
 Real remediation is local-demo only for public demos:
@@ -81,7 +112,7 @@ Real remediation is local-demo only for public demos:
 powershell -ExecutionPolicy Bypass -File .\scripts\demo-real-remediation.ps1 -ConfirmLocalKind
 ```
 
-The script verifies `kind-cascade`, `cascade-targets`, a safe Sock Shop service, rollback steps, post-checks, and dry-run validation before executing. The default action is `restart_deployment` for `catalogue`. It creates a plan, runs `POST /executions/dry-run`, records a non-expired approval through `approval-service`, verifies approval status, then calls `POST /executions` with the returned `approval_id` and `dry_run=false`. Rollback and post-check requirements are satisfied by the persisted plan fields. It temporarily enables `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the remediation executor, then disables them in a `finally` block.
+The script verifies `kind-cascade`, `cascade-targets`, a safe Sock Shop service, rollback steps, post-checks, and dry-run validation before executing. The default action is `restart_deployment` for `catalogue`. It creates a plan, runs `POST /executions/dry-run`, records a non-expired approval through `approval-service`, verifies approval status, then calls `POST /executions` with the returned `approval_id` and `dry_run=false`. The executor then records verification evidence and a rollback plan after the stabilization window. Rollback and post-check requirements are satisfied by the persisted plan fields. It temporarily enables `EXECUTION_ENABLED=true`, `ENABLE_DANGEROUS_ACTIONS=true`, `ENABLE_REAL_REMEDIATION=true`, and `CASCADE_LIVE_DEMO_MODE=true` on the remediation executor, then disables them in a `finally` block.
 
 Intentionally blocked actions include namespace deletion, deployment deletion, database or broker mutation, `cascade-system` mutation, protected services, wildcard selectors, and any action without rollback/post-checks.
 
@@ -95,7 +126,7 @@ Local live-demo UI mode is optional and local-kind only. The UI shows `LIVE DEMO
 powershell -ExecutionPolicy Bypass -File .\scripts\enable-ui-live-demo.ps1 -ConfirmLocalKind
 ```
 
-In that mode the UI exposes only `restart_deployment` for policy-allowlisted safe services, requires a confirmation checkbox, verifies rollback steps and post-checks are present, and follows the same plan -> dry-run -> approval -> approval-status -> real execution flow as the script. The backend still rejects protected services, missing approvals, missing dry-runs, missing rollback/post-checks, disallowed namespaces, denied resource kinds, and wildcard selectors. Disable the proxy flag after the local demo:
+In that mode the UI exposes only `restart_deployment` for policy-allowlisted safe services, requires a confirmation checkbox, verifies rollback steps and post-checks are present, and follows the same plan -> dry-run -> approval -> approval-status -> real execution -> verification flow as the script. The remediation page also shows before/after verification and rollback status. The backend still rejects protected services, missing approvals, missing dry-runs, missing rollback/post-checks, disallowed namespaces, denied resource kinds, and wildcard selectors. Disable the proxy flag after the local demo:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\disable-ui-live-demo.ps1
@@ -143,6 +174,7 @@ It has no cluster-admin role and no permissions for secrets, configmaps, RBAC, s
 - `POST /plans/from-latest-investigation`
 - `POST /plans/from-latest-anomaly`
 - `POST /plans/{plan_id}/validate`
+- `POST /policy/evaluate`
 
 ### Approval Service
 
@@ -158,6 +190,7 @@ It has no cluster-admin role and no permissions for secrets, configmaps, RBAC, s
 - `GET /health`
 - `GET /ready`
 - `GET /safety/policy`
+- `POST /safety/evaluate`
 - `POST /executions/dry-run`
 - `POST /executions`
 - `GET /executions`

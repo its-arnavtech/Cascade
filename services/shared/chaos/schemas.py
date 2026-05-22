@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -15,6 +16,56 @@ class ChaosPlanRequest(BaseModel):
     experiment_kind: str = Field(default="pod_kill", pattern="^(pod_kill|network_delay|stress_cpu)$")
     duration_seconds: int = Field(default=30, ge=5, le=300)
     dry_run: bool = True
+
+
+class ChaosCampaignStatus(StrEnum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+
+
+class ChaosCampaignRunStatus(StrEnum):
+    REQUESTED = "requested"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    COMPLETED_WITH_BLOCKS = "completed_with_blocks"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+    FAILED = "failed"
+
+
+class ChaosCampaignTemplate(BaseModel):
+    name: str = "bounded pod kill"
+    experiment_kind: str = Field(default="pod_kill", pattern="^(pod_kill|network_delay|stress_cpu)$")
+    target_service: str = ""
+    duration_seconds: int = Field(default=30, ge=5, le=300)
+    objective: str = "Validate service resilience with a bounded chaos template"
+    dry_run: bool = True
+
+
+class ChaosCampaignRequest(BaseModel):
+    name: str = Field(default="Safe dry-run chaos campaign", min_length=1, max_length=120)
+    target_namespace: str = ACTIVE_NAMESPACE
+    allowed_services: list[str] = Field(default_factory=lambda: list(ACTIVE_SAFE_CHAOS_SERVICES[:2]))
+    experiment_templates: list[ChaosCampaignTemplate] = Field(default_factory=lambda: [ChaosCampaignTemplate()])
+    schedule: dict[str, Any] = Field(default_factory=lambda: {"trigger": "manual"})
+    max_experiments_per_run: int = Field(default=3, ge=1, le=20)
+    blast_radius_limit: float = Field(default=0.5, ge=0.0, le=1.0)
+    cooldown_seconds: int = Field(default=0, ge=0, le=3600)
+    dry_run: bool = True
+    local_demo_execution_enabled: bool = False
+    stop_conditions: dict[str, Any] = Field(default_factory=lambda: {"pause_on_degraded_health": True})
+
+
+class ChaosCampaignStartRequest(BaseModel):
+    dry_run: bool | None = None
+    max_experiments: int | None = Field(default=None, ge=1, le=20)
+    requested_by: str = "operator"
+    approval_id: str = ""
+    approved: bool = False
+    observation_window_seconds: int = Field(default=10, ge=5, le=600)
+    trigger_agent_investigation: bool = False
 
 
 class ChaosRunRequest(BaseModel):

@@ -1,14 +1,16 @@
 import { FormEvent, useState } from "react";
-import { useAnalyzeCausality, useCausalIncidents, useCausalReport } from "../api/hooks";
+import { useAnalyzeCausality, useAnalyzeRca, useCausalIncidents, useCausalReport, useRcaReports } from "../api/hooks";
 import { Badge } from "../components/Badge";
-import { BlastRadiusPanel, CausalReportPanel, EvidenceReportPanel } from "../components/IntelligencePanels";
+import { BlastRadiusPanel, CausalReportPanel, EvidenceReportPanel, RcaReportPanel } from "../components/IntelligencePanels";
 import { JsonBlock } from "../components/JsonBlock";
 import { StatusPanel } from "../components/cards/StatusPanel";
 import { DataTable } from "../components/tables/DataTable";
 
 export function CausalityPage() {
   const reports = useCausalIncidents();
+  const rcaReports = useRcaReports();
   const analyze = useAnalyzeCausality();
+  const analyzeRca = useAnalyzeRca();
   const report = useCausalReport();
   const [targetService, setTargetService] = useState("");
   const [selected, setSelected] = useState<Record<string, unknown> | undefined>();
@@ -16,6 +18,7 @@ export function CausalityPage() {
   function analyzeCausality(event: FormEvent) {
     event.preventDefault();
     analyze.mutate({ target_service: targetService.trim() || undefined }, { onSuccess: (data) => setSelected(data.report) });
+    analyzeRca.mutate({ target_service: targetService.trim() || undefined }, { onSuccess: (data) => setSelected(data.report) });
   }
 
   function generateReport() {
@@ -23,6 +26,7 @@ export function CausalityPage() {
     report.mutate({ incident: selected, topology_impact: { root_service: selected.target_service } });
   }
 
+  const latestRca = analyzeRca.data?.report ?? rcaReports.data?.reports?.[0];
   const active = report.data ?? selected ?? analyze.data?.report;
 
   return (
@@ -33,6 +37,32 @@ export function CausalityPage() {
         <button type="submit" className="full" disabled={analyze.isPending}>Analyze causality</button>
       </form>
       {analyze.error ? <div className="state error">{analyze.error.message}</div> : null}
+      {analyzeRca.error ? <div className="state error">{analyzeRca.error.message}</div> : null}
+      <div className="grid two">
+        <StatusPanel title="Current RCA Summary" loading={analyzeRca.isPending || rcaReports.isLoading} error={rcaReports.error}>
+          {latestRca ? <RcaReportPanel value={latestRca} /> : <div className="state">No RCA evidence bundle returned. Run analysis after telemetry and topology are available.</div>}
+        </StatusPanel>
+        <StatusPanel title="RCA Evidence" loading={analyzeRca.isPending || rcaReports.isLoading}>
+          {latestRca ? <EvidenceReportPanel value={latestRca} /> : <div className="state">No evidence returned.</div>}
+        </StatusPanel>
+      </div>
+      <StatusPanel title="RCA Bundles" loading={rcaReports.isLoading} error={rcaReports.error}>
+        <DataTable
+          caption="RCA evidence bundles"
+          rows={rcaReports.data?.reports ?? []}
+          empty="No RCA bundles returned."
+          onRowClick={(row) => setSelected(row)}
+          columns={[
+            { key: "generated_at", label: "Generated", width: "150px" },
+            { key: "report_id", label: "Report", width: "230px" },
+            { key: "target_service", label: "Target", width: "140px" },
+            { key: "likely_root_cause_service", label: "Likely root", width: "160px" },
+            { key: "status", label: "Status", width: "140px" },
+            { key: "confidence_score", label: "Confidence", width: "110px", render: (row) => <Badge tone="teal">{String(row.confidence_score ?? "insufficient data")}</Badge> },
+            { key: "explanation", label: "Evidence-based explanation" },
+          ]}
+        />
+      </StatusPanel>
       <StatusPanel title="Causal Reports" loading={reports.isLoading} error={reports.error}>
         <DataTable
           caption="Causal reports"

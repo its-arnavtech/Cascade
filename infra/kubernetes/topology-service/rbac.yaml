@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: topology-service
+  namespace: cascade-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: topology-service-target-reader
+  namespace: cascade-targets
+rules:
+  - apiGroups: [""]
+    resources: ["services", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: topology-service-target-reader
+  namespace: cascade-targets
+subjects:
+  - kind: ServiceAccount
+    name: topology-service
+    namespace: cascade-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: topology-service-target-reader

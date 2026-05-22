@@ -45,3 +45,29 @@ class CriticalPathsRequest(BaseModel):
     root_service: str
     depth_cap: int = 4
     limit: int = 5
+
+
+class TopologyRefreshRequest(BaseModel):
+    persist: bool = False
+
+
+class TrafficEdgeEvidence(BaseModel):
+    source_service: str
+    target_service: str
+    namespace: str | None = None
+    request_count: float | None = None
+    error_count: float | None = None
+    latency_p50_ms: float | None = None
+    latency_p95_ms: float | None = None
+    latency_p99_ms: float | None = None
+    observation_window: str | None = None
+    evidence_source: str = "trace"
+    confidence: float | None = None
+    last_seen: str | None = None
+    trace_id: str | None = None
+    event_id: str | None = None
+
+
+class TrafficInferenceRequest(BaseModel):
+    evidence_source: str = "trace"
+    edges: list[TrafficEdgeEvidence]

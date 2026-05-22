@@ -11,6 +11,8 @@ Cascade uses Redpanda as the local Kafka-compatible event backbone in kind. Clic
 - `agent.investigations`
 - `chaos.experiments`
 - `remediation.actions`
+- `autopilot.runs`
+- `causality.reports`
 
 ## Verify Topics
 
@@ -47,6 +49,13 @@ kubectl -n cascade-system exec deployment/redpanda -- rpk -X brokers=localhost:9
 
 ## Retention Assumptions
 
-This repo does not tune Redpanda for production retention. In local kind, topic data should be treated as disposable and reproducible by rerunning deploy/demo flows. Persisted operational history lives in ClickHouse tables, and semantic memory lives in Qdrant collections.
+Redpanda runs with a local PVC and per-topic retention configured by `infra/kubernetes/redpanda/topics-job.yaml` and `scripts/lib/kafka-topics.ps1`.
 
-For production-style deployment, define retention by topic, monitor broker disk usage, back up ClickHouse and Qdrant, and document which consumers can replay from earliest offsets.
+- `telemetry.raw`: 7 days / 512 MiB
+- `telemetry.enriched`: 14 days / 1 GiB
+- anomaly and experiment topics: 90 days / 256 MiB
+- investigation, chaos, remediation, Autopilot, and causality topics: 180 days / 256 MiB
+
+Persisted operational history still lives in ClickHouse tables, and semantic memory lives in Qdrant collections. Redpanda is a replay buffer, not the long-term evidence store.
+
+For production-style deployment, validate retention sizing from real traffic, monitor broker disk usage, back up ClickHouse and Qdrant, and document which consumers can replay from earliest offsets.

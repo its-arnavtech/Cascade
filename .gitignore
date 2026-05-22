@@ -162,6 +162,13 @@ generated/
 artifacts/
 run-output/
 backups/
+backup-manifest*.json
+*.snapshot
+*.snapshot.tar
+*.snapshot.tar.gz
+*.sst
+*.binlog
+*.chbackup
 acceptance-output/
 demo-output/
 

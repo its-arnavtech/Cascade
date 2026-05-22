@@ -3,6 +3,7 @@ param(
     [string]$TargetNamespace = "cascade-targets",
     [string]$TargetService = "catalogue",
     [switch]$DryRunOnly,
+    [switch]$IncludeLiveChaos,
     [switch]$NoChaos
 )
 
@@ -31,7 +32,7 @@ try {
     $api = Invoke-Kubectl @("version", "--request-timeout=5s"); if ($api.ExitCode -eq 0) { Add-Pass "Kubernetes API reachable" } else { Add-Fail "Kubernetes API unreachable"; throw "No cluster" }
     foreach ($d in @("redpanda", "clickhouse", "qdrant", "retrieval-service", "agent-tool-gateway", "agent-orchestrator-service", "chaos-planner-service", "chaos-executor-service")) { Test-Deployment $d }
 
-    foreach ($t in @("investigation_runs", "agent_steps", "investigation_reports", "agent_tool_calls", "chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations")) {
+    foreach ($t in @("investigation_runs", "agent_steps", "investigation_reports", "agent_tool_calls", "chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations", "chaos_campaigns", "chaos_campaign_runs", "chaos_campaign_steps")) {
         $tables = CH "SHOW TABLES FROM cascade"
         if ($tables -match "(?m)^$t$") { Add-Pass "ClickHouse table $t exists" } else { Add-Fail "ClickHouse table $t missing" }
     }
@@ -77,8 +78,28 @@ try {
         if ([int](CH "SELECT count() FROM cascade.chaos_experiment_runs WHERE run_id = '$($dryRun.run_id)'") -gt 0) { Add-Pass "dry-run row inserted" } else { Add-Fail "dry-run row missing" }
         Assert-NoManagedChaos
 
+        $campaign = HttpJson POST "http://localhost:8019/campaigns" @{
+            name = "Acceptance dry-run campaign"
+            target_namespace = $TargetNamespace
+            allowed_services = @($TargetService)
+            experiment_templates = @(@{ name = "accept pod kill"; experiment_kind = "pod_kill"; target_service = $TargetService; duration_seconds = 5; dry_run = $true })
+            schedule = @{ trigger = "manual" }
+            max_experiments_per_run = 1
+            blast_radius_limit = 0.5
+            cooldown_seconds = 0
+            dry_run = $true
+            local_demo_execution_enabled = $false
+        }
+        if ($campaign.campaign.campaign_id) { Add-Pass "dry-run campaign created" } else { Add-Fail "dry-run campaign creation failed" }
+        $campaignRun = HttpJson POST "http://localhost:8019/campaigns/$($campaign.campaign.campaign_id)/start" @{ dry_run = $true; requested_by = "accept-chaos"; observation_window_seconds = 5; trigger_agent_investigation = $false }
+        if ($campaignRun.run.status -in @("completed", "completed_with_blocks")) { Add-Pass "dry-run campaign completed" } else { Add-Fail "dry-run campaign did not complete" }
+        if ([int](CH "SELECT count() FROM cascade.chaos_campaign_runs WHERE run_id = '$($campaignRun.run.run_id)'") -gt 0) { Add-Pass "campaign run row inserted" } else { Add-Fail "campaign run row missing" }
+        $campaignReport = HttpJson GET "http://localhost:8019/campaign-runs/$($campaignRun.run.run_id)/report"
+        if ($campaignReport.report.campaign_id -eq $campaign.campaign.campaign_id) { Add-Pass "campaign report returns valid JSON" } else { Add-Fail "campaign report invalid" }
+        Assert-NoManagedChaos
+
         $realRun = $null
-        if (-not $DryRunOnly -and -not $NoChaos) {
+        if ($IncludeLiveChaos -and -not $DryRunOnly -and -not $NoChaos) {
             $realRun = HttpJson POST "http://localhost:8020/runs" @{ plan_id = $planId; approved = $true; dry_run = $false; observation_window_seconds = 5; trigger_agent_investigation = $true } 1
             if ($realRun.status -eq "completed" -and $realRun.cleanup_status -match "cleaned_up|not_found") { Add-Pass "real bounded pod_kill execution completed with cleanup" } else { Add-Fail "real bounded pod_kill execution failed" }
             if ([int](CH "SELECT count() FROM cascade.chaos_observations WHERE run_id = '$($realRun.run_id)'") -gt 0) { Add-Pass "observation row inserted" } else { Add-Fail "observation row missing" }
@@ -86,7 +107,7 @@ try {
             $detail = HttpJson GET "http://localhost:8020/runs/$($realRun.run_id)"
             if ($detail.observation -and $detail.score) { Add-Pass "GET /runs/{run_id} returns observation and score" } else { Add-Fail "run detail missing observation/score" }
         } else {
-            Add-Warn "Real chaos execution skipped by -DryRunOnly/-NoChaos"
+            Add-Warn "Real chaos execution skipped by default. Pass -IncludeLiveChaos only for authorized local/dev/staging validation."
         }
 
         $runs = HttpJson GET "http://localhost:8020/runs?limit=5"

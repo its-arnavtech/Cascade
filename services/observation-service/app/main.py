@@ -13,7 +13,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, status
 from app.config import Settings, get_settings
 from app.models import HealthResponse, RawMetricsResponse, SnapshotResponse, TelemetryPodSnapshot
 from app.normalizer import build_snapshot_queries, normalize_snapshot
-from app.prometheus_client import PrometheusClient, PrometheusError
+from app.prometheus_client import PrometheusClient
 from services.shared.kafka.config import KafkaSettings
 from services.shared.kafka.producer import KafkaProducer
 
@@ -65,24 +65,41 @@ async def snapshot(
 async def collect_snapshot(settings: Settings, prometheus: PrometheusClient) -> SnapshotResponse:
     queries = build_snapshot_queries(settings.target_namespace)
     query_results = await asyncio.gather(
-        *(prometheus.query(query) for query in queries.values()),
+        *(prometheus.query_with_status(metric_name, query) for metric_name, query in queries.items()),
         return_exceptions=True,
     )
 
     normalized_results: dict[str, dict[str, Any] | None] = {}
+    query_status: dict[str, dict[str, Any]] = {}
     for metric_name, result in zip(queries.keys(), query_results, strict=True):
         if isinstance(result, Exception):
             logger.warning("Snapshot metric '%s' is unavailable: %s", metric_name, result)
             normalized_results[metric_name] = None
+            query_status[metric_name] = {"metric": metric_name, "query": queries[metric_name], "status": "failed", "error": str(result)}
         else:
-            normalized_results[metric_name] = result
+            normalized_results[metric_name] = result.payload
+            query_status[metric_name] = result.status.model_dump(exclude_none=True)
 
-    snapshot_response = normalize_snapshot(settings.target_namespace, normalized_results)
+    snapshot_response = normalize_snapshot(settings.target_namespace, normalized_results, query_status=query_status)
+    system_health = await _collect_system_health(settings)
+    _apply_system_health(snapshot_response, system_health)
     if snapshot_response.pods:
         return snapshot_response
 
     fallback = await _collect_kubernetes_snapshot(settings)
+    _apply_system_health(fallback, system_health)
     if fallback.pods:
+        fallback.query_status = query_status
+        fallback.missing_metrics = sorted(set(fallback.missing_metrics) | set(snapshot_response.missing_metrics))
+        fallback.collection_warnings = [
+            *snapshot_response.collection_warnings,
+            "Prometheus returned no pod samples; Kubernetes fallback supplied pod status only.",
+        ]
+        fallback.used_kubernetes_fallback = True
+        for pod in fallback.pods:
+            pod.metric_status = {name: str(status.get("status") or "unknown") for name, status in query_status.items()}
+            pod.used_kubernetes_fallback = True
+            pod.evidence_quality = "kubernetes_fallback"
         logger.warning(
             "Prometheus snapshot returned no pods; using Kubernetes API fallback namespace=%s count=%s",
             settings.target_namespace,
@@ -98,15 +115,9 @@ async def raw_metrics(
     prometheus: PrometheusClient = Depends(get_prometheus_client),
 ) -> RawMetricsResponse:
     safe_query = _validate_promql(query)
-    try:
-        payload = await prometheus.query(safe_query)
-    except PrometheusError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
+    result = await prometheus.query_with_status("raw", safe_query)
 
-    return RawMetricsResponse(query=safe_query, prometheus=payload)
+    return RawMetricsResponse(query=safe_query, prometheus=result.payload, query_status=result.status.model_dump(exclude_none=True))
 
 
 def _validate_promql(query: str) -> str:
@@ -152,13 +163,23 @@ async def _collect_kubernetes_snapshot(settings: Settings) -> SnapshotResponse:
             continue
         container_statuses = status.get("containerStatuses") or []
         restart_count = sum(int(container.get("restartCount") or 0) for container in container_statuses)
+        ready = bool(container_statuses) and all(bool(container.get("ready")) for container in container_statuses)
+        warning_count = await _pod_warning_event_count(settings, name)
         pods.append(
             TelemetryPodSnapshot(
                 namespace=namespace,
                 pod_name=name,
                 service_name=_service_name_from_pod(metadata),
+                labels={str(key): str(value) for key, value in (metadata.get("labels") or {}).items()},
                 pod_phase=status.get("phase"),
                 restart_count=float(restart_count),
+                ready=ready,
+                warning_event_count=float(warning_count),
+                service_available=status.get("phase") == "Running" and ready,
+                missing_metrics=["cpu", "memory", "request_rate", "error_rate", "latency_p50_ms", "latency_p95_ms", "latency_p99_ms"],
+                collection_warnings=["Prometheus snapshot unavailable; using Kubernetes pod status fallback."],
+                evidence_quality="kubernetes_fallback",
+                used_kubernetes_fallback=True,
             )
         )
 
@@ -179,6 +200,53 @@ def _service_name_from_pod(metadata: dict[str, Any]) -> str | None:
     if stateful_match:
         return stateful_match.group("name")
     return name or None
+
+
+async def _pod_warning_event_count(settings: Settings, pod_name: str) -> int:
+    token_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    ca_path = Path("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+    if not token_path.exists():
+        return 0
+    try:
+        token = token_path.read_text(encoding="utf-8").strip()
+        selector = f"involvedObject.name={pod_name},type=Warning"
+        url = f"https://kubernetes.default.svc/api/v1/namespaces/{settings.target_namespace}/events"
+        verify: str | bool = str(ca_path) if ca_path.exists() else True
+        async with httpx.AsyncClient(timeout=settings.request_timeout_seconds, verify=verify) as client:
+            response = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params={"fieldSelector": selector})
+            response.raise_for_status()
+            payload = response.json()
+        return len(payload.get("items") or [])
+    except Exception:
+        return 0
+
+
+async def _collect_system_health(settings: Settings) -> dict[str, bool | None]:
+    async def check(url: str) -> bool | None:
+        if not url:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=min(settings.request_timeout_seconds, 3.0)) as client:
+                response = await client.get(url)
+            return response.status_code < 500
+        except Exception:
+            return False
+
+    redpanda, clickhouse, qdrant = await asyncio.gather(
+        check(settings.redpanda_health_url),
+        check(settings.clickhouse_health_url),
+        check(settings.qdrant_health_url),
+    )
+    return {"redpanda_healthy": redpanda, "clickhouse_healthy": clickhouse, "qdrant_healthy": qdrant}
+
+
+def _apply_system_health(snapshot: SnapshotResponse, health: dict[str, bool | None]) -> None:
+    for pod in snapshot.pods:
+        pod.redpanda_healthy = health.get("redpanda_healthy")
+        pod.clickhouse_healthy = health.get("clickhouse_healthy")
+        pod.qdrant_healthy = health.get("qdrant_healthy")
+        if pod.service_available is None:
+            pod.service_available = pod.pod_phase == "Running" and pod.ready is not False
 
 
 async def _publish_telemetry_loop(settings: Settings) -> None:
@@ -225,9 +293,26 @@ def _build_raw_telemetry_event(timestamp: datetime, pod: TelemetryPodSnapshot) -
         "namespace": pod.namespace,
         "pod_name": pod.pod_name,
         "service_name": pod.service_name,
+        "labels": pod.labels,
         "cpu": pod.cpu_usage_cores,
         "memory": pod.memory_working_set_bytes,
         "restart_count": pod.restart_count,
         "pod_phase": pod.pod_phase,
+        "ready": pod.ready,
+        "request_rate": pod.request_rate,
+        "error_rate": pod.error_rate,
+        "latency_p50_ms": pod.latency_p50_ms,
+        "latency_p95_ms": pod.latency_p95_ms,
+        "latency_p99_ms": pod.latency_p99_ms,
+        "warning_event_count": pod.warning_event_count,
+        "service_available": pod.service_available,
+        "redpanda_healthy": pod.redpanda_healthy,
+        "clickhouse_healthy": pod.clickhouse_healthy,
+        "qdrant_healthy": pod.qdrant_healthy,
+        "missing_metrics": pod.missing_metrics,
+        "collection_warnings": pod.collection_warnings,
+        "metric_status": pod.metric_status,
+        "evidence_quality": pod.evidence_quality,
+        "used_kubernetes_fallback": pod.used_kubernetes_fallback,
         "source": "observation-service",
     }

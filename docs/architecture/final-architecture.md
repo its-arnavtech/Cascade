@@ -1,6 +1,6 @@
 # Final Cascade Architecture
 
-Cascade is a Kubernetes-native AI reliability platform for local incident intelligence, anomaly detection, agent investigation, chaos dry-runs, remediation planning, and operator approval.
+Cascade is a Kubernetes-native AI reliability platform for local incident intelligence, anomaly detection, agent investigation, chaos dry-runs, remediation planning, operator approval, and safe closed-loop Autopilot orchestration.
 
 ## Overview
 
@@ -14,8 +14,9 @@ Target workload telemetry flows from Prometheus and Kubernetes into Redpanda top
 - Anomaly detection: feature extraction and anomaly detection.
 - Knowledge and RAG: knowledge ingestion and RAG retrieval over runbooks and operational records.
 - Agent investigations: deterministic agent investigation runtime and read-only tool gateway.
-- Chaos engineering: chaos planning and dry-run execution with safety boundaries.
+- Chaos engineering: chaos planning, repeatable dry-run campaigns, and dry-run execution with safety boundaries.
 - Remediation: remediation recommendation, approval records, and dry-run executor.
+- Autopilot: deterministic closed-loop orchestration across anomaly, agent, remediation, approval, executor, and verification APIs.
 - Command Center UI: Command Center UI and browser-facing API proxy.
 - Hardening: hardening scripts, backups, secret hygiene, rate limiting, final docs, and acceptance aggregation.
 
@@ -38,12 +39,13 @@ Core APIs:
 - `remediation-recommender-service:8021`
 - `approval-service:8022`
 - `remediation-executor-service:8023`
+- `autopilot-service:8024`
 - `command-center-api:8031`
 - `command-center:8030`
 
 ## Data Flow
 
-Prometheus/Kubernetes signals enter `observation-service`, publish to `telemetry.raw`, move through `stream-enricher` to `telemetry.enriched`, and are archived by `telemetry-archiver`. Feature extraction and anomaly detection read ClickHouse tables and publish anomaly lifecycle events. Agent, chaos, and remediation services write state to ClickHouse and compact lifecycle messages to Redpanda.
+Prometheus/Kubernetes signals enter `observation-service`, publish to `telemetry.raw`, move through `stream-enricher` to `telemetry.enriched`, and are archived by `telemetry-archiver`. Feature extraction and anomaly detection read ClickHouse tables and publish anomaly lifecycle events. Agent, chaos, and remediation services write state to ClickHouse and compact lifecycle messages to Redpanda. `chaos-planner-service` can now store repeatable campaign definitions and start bounded campaign runs through the existing executor safety path. `autopilot-service` composes those APIs into a safe triggered loop and records run/step history.
 
 ## Topics
 
@@ -54,12 +56,14 @@ Prometheus/Kubernetes signals enter `observation-service`, publish to `telemetry
 - `agent.investigations`
 - `chaos.experiments`
 - `remediation.actions`
+- `autopilot.runs`
+- `causality.reports`
 
 ## Storage
 
 ClickHouse database: `cascade`.
 
-Important tables include telemetry and experiment events, incidents, reports, topology snapshots, feature windows, anomaly events, model runs, knowledge documents/chunks, investigation runs/steps/reports/tool calls, chaos plans/runs/observations/scores/safety violations, and remediation plans/approvals/executions/policy audit rows.
+Important tables include telemetry and experiment events, incidents, reports, topology snapshots, feature windows, anomaly events, model runs, knowledge documents/chunks, investigation runs/steps/reports/tool calls, chaos plans/runs/observations/scores/safety violations/campaigns, remediation plans/approvals/executions/policy audit rows, and Autopilot runs/steps.
 
 Qdrant collections:
 
@@ -71,6 +75,7 @@ Qdrant collections:
 - Command Center API allows only GET and selected safe POST routes.
 - Real remediation execution is blocked by default.
 - Real chaos execution is blocked through the UI path by default.
+- Autopilot defaults to `dry_run`; `local_demo_execute` still requires executor policy, live-demo flags, allowlists, and an approval record.
 - Chaos engineering normal validation uses `-DryRunOnly`.
 - Rate limiting is local in-memory protection on `command-center-api`.
 

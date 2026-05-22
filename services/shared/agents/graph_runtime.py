@@ -81,6 +81,8 @@ class DeterministicGraphRuntime:
             return {"knowledge_items": len(state.knowledge_evidence)}
         if node == "incident_historian":
             service = req.service or _service(state)
+            rca = await self._tool(state, "get_recent_rca_reports", {"limit": 3, "service": service})
+            state.rca_evidence.extend(rca.get("data", {}).get("reports", [])[:3])
             causal = await self._tool(state, "get_causal_report", {"incident_id": req.trigger_id, "service": service})
             if causal.get("data"):
                 state.causal_report_evidence.append(causal["data"])

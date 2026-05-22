@@ -19,6 +19,12 @@ function Invoke-Checked {
     Write-Host "---- $Description ----"
     & $Command
 }
+function Assert-NativeSuccess {
+    param([string]$Description)
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE"
+    }
+}
 function Clear-RedpandaRollout {
     Write-Host "Clearing stale Redpanda ReplicaSets and pods before applying the single-broker deployment."
     kubectl -n $Namespace scale deployment/redpanda --replicas=0 --timeout=30s 2>$null
@@ -66,14 +72,21 @@ foreach ($image in $images) {
 
 Write-Section "Deploy Redpanda"
 try { Clear-RedpandaRollout } catch { Write-Host "WARN: Redpanda pre-scale skipped (fresh cluster)" }
+kubectl apply -f infra/kubernetes/redpanda/pvc.yaml
+Assert-NativeSuccess "Apply Redpanda PVC"
 kubectl apply -f infra/kubernetes/redpanda/deployment.yaml
+Assert-NativeSuccess "Apply Redpanda deployment"
 kubectl apply -f infra/kubernetes/redpanda/service.yaml
+Assert-NativeSuccess "Apply Redpanda service"
 kubectl -n $Namespace rollout status deployment/redpanda --timeout=240s
+Assert-NativeSuccess "Wait for Redpanda rollout"
 
 Write-Section "Create Topics"
 kubectl -n $Namespace delete job redpanda-topics-init --ignore-not-found=true
 kubectl apply -f infra/kubernetes/redpanda/topics-job.yaml
+Assert-NativeSuccess "Apply Redpanda topics job"
 kubectl -n $Namespace wait --for=condition=complete job/redpanda-topics-init --timeout=180s
+Assert-NativeSuccess "Wait for Redpanda topics job"
 
 Write-Section "Deploy Services"
 foreach ($path in @(

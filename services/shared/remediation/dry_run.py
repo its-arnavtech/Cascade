@@ -42,6 +42,63 @@ class KubernetesRemediationClient:
         deployment = self.apps.read_namespaced_deployment(name=name, namespace=namespace)
         return int(deployment.spec.replicas or 0)
 
+    def deployment_snapshot(self, namespace: str, name: str) -> dict[str, Any]:
+        deployment = self.apps.read_namespaced_deployment(name=name, namespace=namespace)
+        selector = deployment.spec.selector.match_labels or {}
+        label_selector = ",".join(f"{key}={value}" for key, value in selector.items())
+        pods = self.core.list_namespaced_pod(namespace=namespace, label_selector=label_selector).items if label_selector else []
+        events = self.core.list_namespaced_event(namespace=namespace, limit=100).items
+        pod_rows = []
+        ready_pods = 0
+        restart_count = 0
+        for pod in pods:
+            statuses = pod.status.container_statuses or []
+            pod_ready = any(condition.type == "Ready" and condition.status == "True" for condition in (pod.status.conditions or []))
+            ready_pods += 1 if pod_ready else 0
+            restarts = sum(int(status.restart_count or 0) for status in statuses)
+            restart_count += restarts
+            pod_rows.append({
+                "name": pod.metadata.name,
+                "phase": pod.status.phase,
+                "ready": pod_ready,
+                "restart_count": restarts,
+            })
+        related_events = [
+            {
+                "type": event.type,
+                "reason": event.reason,
+                "message": event.message,
+                "object_kind": event.involved_object.kind if event.involved_object else "",
+                "object_name": event.involved_object.name if event.involved_object else "",
+            }
+            for event in events
+            if _event_mentions(event, name, {pod["name"] for pod in pod_rows})
+        ][:20]
+        replicas = int(deployment.spec.replicas or 0)
+        available = int(deployment.status.available_replicas or 0)
+        ready = int(deployment.status.ready_replicas or 0)
+        return {
+            "kind": "Deployment",
+            "name": deployment.metadata.name,
+            "namespace": deployment.metadata.namespace,
+            "replicas": replicas,
+            "available_replicas": available,
+            "ready_replicas": ready,
+            "updated_replicas": int(deployment.status.updated_replicas or 0),
+            "observed_generation": int(deployment.status.observed_generation or 0),
+            "pod_count": len(pod_rows),
+            "ready_pods": ready_pods,
+            "restart_count": restart_count,
+            "availability": (available / replicas) if replicas else 0.0,
+            "template_metadata": {
+                "labels": dict((deployment.spec.template.metadata.labels or {}).items()),
+                "annotations": dict((deployment.spec.template.metadata.annotations or {}).items()),
+            },
+            "pods": pod_rows,
+            "warning_events_count": len([event for event in related_events if str(event.get("type", "")).lower() == "warning"]),
+            "events": related_events,
+        }
+
     def dry_run_deployment_annotation(self, namespace: str, name: str, plan_id: str) -> dict[str, Any]:
         body = {"spec": {"template": {"metadata": {"annotations": {"cascade.io/remediation-plan": plan_id}}}}}
         result = self.apps.patch_namespaced_deployment(name=name, namespace=namespace, body=body, dry_run="All")
@@ -64,6 +121,11 @@ class KubernetesRemediationClient:
         result = self.apps.patch_namespaced_deployment_scale(name=name, namespace=namespace, body=body)
         return {"kind": "Deployment", "name": result.metadata.name, "namespace": result.metadata.namespace, "replicas": replicas, "executed": True}
 
+    def rollback_replicas(self, namespace: str, name: str, replicas: int) -> dict[str, Any]:
+        body = {"spec": {"replicas": int(replicas)}}
+        result = self.apps.patch_namespaced_deployment_scale(name=name, namespace=namespace, body=body)
+        return {"kind": "Deployment", "name": result.metadata.name, "namespace": result.metadata.namespace, "replicas": int(replicas), "rolled_back": True}
+
 
 def local_dry_run(plan: dict[str, Any], kube: KubernetesRemediationClient | None) -> dict[str, Any]:
     action = plan.get("action_type")
@@ -80,4 +142,12 @@ def local_dry_run(plan: dict[str, Any], kube: KubernetesRemediationClient | None
     if action in {"restart_deployment", "rollback_deployment"}:
         return {"validation_status": "passed", "summary": "Server-side dry-run deployment patch validated.", "output": kube.dry_run_deployment_annotation(namespace, service, plan["plan_id"])}
     return {"validation_status": "passed", "summary": "No Kubernetes dry-run template is required for this action.", "output": {}}
+
+
+def _event_mentions(event: Any, deployment_name: str, pod_names: set[str]) -> bool:
+    involved = event.involved_object
+    if involved and involved.name in ({deployment_name} | pod_names):
+        return True
+    message = str(event.message or "")
+    return deployment_name in message or any(name in message for name in pod_names)
 

@@ -79,6 +79,52 @@ class ClickHouseClient:
         logger.info("Inserted ClickHouse rows table=%s count=%s", table, len(materialized))
         return len(materialized)
 
+    async def insert_audit_event(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("audit_events", [row])
+
+    async def recent_audit_events(
+        self,
+        limit: int = 100,
+        subsystem: str | None = None,
+        severity: str | None = None,
+        service: str | None = None,
+        namespace: str | None = None,
+        status: str | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
+        correlation_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        where = self._audit_where(
+            {
+                "subsystem": subsystem,
+                "severity": severity,
+                "service": service,
+                "namespace": namespace,
+                "status": status,
+                "correlation_id": correlation_id,
+            },
+            start_time,
+            end_time,
+        )
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.audit_events {where} ORDER BY timestamp DESC LIMIT {self._limit(limit)}")
+
+    async def audit_event(self, event_id: str) -> dict[str, Any] | None:
+        safe = self._quote(event_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.audit_events WHERE event_id = {safe} ORDER BY timestamp DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def audit_timeline(self, correlation_id: str, limit: int = 200) -> list[dict[str, Any]]:
+        safe = self._quote(correlation_id)
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.audit_events WHERE correlation_id = {safe} OR run_id = {safe} OR autopilot_run_id = {safe} ORDER BY timestamp ASC LIMIT {self._limit(limit)}")
+
+    async def audit_service_timeline(self, namespace: str, service: str, limit: int = 200) -> list[dict[str, Any]]:
+        where = self._where({"namespace": namespace, "service": service})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.audit_events {where} ORDER BY timestamp ASC LIMIT {self._limit(limit)}")
+
+    async def audit_autopilot_timeline(self, run_id: str, limit: int = 200) -> list[dict[str, Any]]:
+        safe = self._quote(run_id)
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.audit_events WHERE autopilot_run_id = {safe} OR run_id = {safe} OR correlation_id = {safe} ORDER BY timestamp ASC LIMIT {self._limit(limit)}")
+
     async def insert_anomaly_events(self, rows: Iterable[dict[str, Any]]) -> int:
         materialized = list(rows)
         if not materialized:
@@ -199,6 +245,33 @@ class ClickHouseClient:
         candidates = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.causal_candidates WHERE report_id = {safe} ORDER BY rank ASC LIMIT 200")
         return {"report": reports[0] if reports else None, "candidates": candidates}
 
+    async def insert_rca_report(self, report: dict[str, Any]) -> int:
+        row = {
+            "report_id": str(report.get("report_id") or ""),
+            "generated_at": str(report.get("generated_at") or ""),
+            "status": str(report.get("status") or ""),
+            "target_service": str(report.get("target_service") or ""),
+            "likely_root_cause_service": str(report.get("likely_root_cause_service") or ""),
+            "confidence_score": float(report.get("confidence_score") or 0.0),
+            "affected_services_json": self.json_dumps(report.get("affected_downstream_services") or []),
+            "related_chaos_json": self.json_dumps(report.get("related_chaos_experiment") or {}),
+            "evidence_json": self.json_dumps(report.get("evidence") or []),
+            "timeline_json": self.json_dumps(report.get("timeline") or []),
+            "limitations_json": self.json_dumps(report.get("limitations") or []),
+            "explanation": str(report.get("explanation") or ""),
+            "report_json": self.json_dumps(report),
+        }
+        return await self.insert_rows("rca_reports", [row])
+
+    async def recent_rca_reports(self, limit: int = 20, service: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"target_service": service})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.rca_reports {where} ORDER BY generated_at DESC LIMIT {self._limit(limit)}")
+
+    async def rca_report_detail(self, report_id: str) -> dict[str, Any] | None:
+        safe = self._quote(report_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.rca_reports WHERE report_id = {safe} ORDER BY generated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
     async def count(self, table: str) -> int:
         text = await self.fetch_text(f"SELECT count() FROM {self.settings.clickhouse_database}.{table}")
         return int(text.strip() or "0")
@@ -315,6 +388,15 @@ class ClickHouseClient:
     async def insert_chaos_policy_audit(self, row: dict[str, Any]) -> int:
         return await self.insert_rows("chaos_policy_audit", [row])
 
+    async def insert_chaos_campaign(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_campaigns", [row])
+
+    async def insert_chaos_campaign_run(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_campaign_runs", [row])
+
+    async def insert_chaos_campaign_step(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("chaos_campaign_steps", [row])
+
     async def recent_chaos_plans(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
         where = self._where({"target_service": service, "status": status})
         return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_experiment_plans {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
@@ -345,9 +427,31 @@ class ClickHouseClient:
     async def recent_chaos_safety_violations(self, limit: int = 20) -> list[dict[str, Any]]:
         return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_safety_violations ORDER BY created_at DESC LIMIT {self._limit(limit)}")
 
+    async def recent_chaos_campaigns(self, limit: int = 20, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_campaigns {where} ORDER BY updated_at DESC LIMIT {self._limit(limit)}")
+
+    async def chaos_campaign(self, campaign_id: str) -> dict[str, Any] | None:
+        safe = self._quote(campaign_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_campaigns WHERE campaign_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def recent_chaos_campaign_runs(self, limit: int = 20, campaign_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"campaign_id": campaign_id, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_campaign_runs {where} ORDER BY started_at DESC LIMIT {self._limit(limit)}")
+
+    async def chaos_campaign_run(self, run_id: str) -> dict[str, Any] | None:
+        safe = self._quote(run_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_campaign_runs WHERE run_id = {safe} ORDER BY started_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def chaos_campaign_steps(self, run_id: str) -> list[dict[str, Any]]:
+        safe = self._quote(run_id)
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.chaos_campaign_steps WHERE run_id = {safe} ORDER BY sequence ASC, created_at ASC LIMIT 200")
+
     async def chaos_stats(self) -> dict[str, int | None]:
         stats: dict[str, int | None] = {}
-        for table in ["chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations", "chaos_policy_audit"]:
+        for table in ["chaos_experiment_plans", "chaos_experiment_runs", "chaos_observations", "resilience_scores", "chaos_safety_violations", "chaos_policy_audit", "chaos_campaigns", "chaos_campaign_runs", "chaos_campaign_steps"]:
             try:
                 stats[table] = await self.count(table)
             except Exception:
@@ -386,8 +490,8 @@ class ClickHouseClient:
     async def insert_remediation_execution(self, row: dict[str, Any]) -> int:
         return await self.insert_rows("remediation_executions", [row])
 
-    async def recent_remediation_executions(self, limit: int = 20, plan_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
-        where = self._where({"plan_id": plan_id, "status": status})
+    async def recent_remediation_executions(self, limit: int = 20, plan_id: str | None = None, status: str | None = None, service: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"plan_id": plan_id, "status": status, "service": service})
         return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_executions {where} ORDER BY started_at DESC LIMIT {self._limit(limit)}")
 
     async def remediation_execution(self, execution_id: str) -> dict[str, Any] | None:
@@ -400,6 +504,35 @@ class ClickHouseClient:
         rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_executions WHERE plan_id = {safe} AND dry_run = 1 AND status = 'completed' AND validation_status IN ('passed', 'degraded') ORDER BY started_at DESC LIMIT 1")
         return rows[0] if rows else None
 
+    async def insert_remediation_rollback_plan(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_rollback_plans", [row])
+
+    async def recent_remediation_rollback_plans(self, limit: int = 20, execution_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"execution_id": execution_id, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_rollback_plans {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
+
+    async def remediation_rollback_plan(self, rollback_plan_id: str) -> dict[str, Any] | None:
+        safe = self._quote(rollback_plan_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_rollback_plans WHERE rollback_plan_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def insert_remediation_verification_result(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("remediation_verification_results", [row])
+
+    async def recent_remediation_verification_results(self, limit: int = 20, execution_id: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"execution_id": execution_id, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_verification_results {where} ORDER BY completed_at DESC LIMIT {self._limit(limit)}")
+
+    async def remediation_verification_result(self, verification_id: str) -> dict[str, Any] | None:
+        safe = self._quote(verification_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_verification_results WHERE verification_id = {safe} ORDER BY completed_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def remediation_verification_for_execution(self, execution_id: str) -> dict[str, Any] | None:
+        safe = self._quote(execution_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.remediation_verification_results WHERE execution_id = {safe} ORDER BY completed_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
     async def insert_remediation_safety_violation(self, row: dict[str, Any]) -> int:
         return await self.insert_rows("remediation_safety_violations", [row])
 
@@ -408,12 +541,67 @@ class ClickHouseClient:
 
     async def remediation_stats(self) -> dict[str, int | None]:
         stats: dict[str, int | None] = {}
-        for table in ["remediation_plans", "remediation_approvals", "remediation_executions", "remediation_safety_violations", "remediation_policy_audit"]:
+        for table in ["remediation_plans", "remediation_approvals", "remediation_executions", "remediation_rollback_plans", "remediation_verification_results", "remediation_safety_violations", "remediation_policy_audit"]:
             try:
                 stats[table] = await self.count(table)
             except Exception:
                 stats[table] = None
         return stats
+
+    async def insert_autopilot_run(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("autopilot_runs", [row])
+
+    async def insert_autopilot_step(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("autopilot_steps", [row])
+
+    async def recent_autopilot_runs(self, limit: int = 20, service: str | None = None, status: str | None = None) -> list[dict[str, Any]]:
+        where = self._where({"service": service, "status": status})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.autopilot_runs {where} ORDER BY created_at DESC LIMIT {self._limit(limit)}")
+
+    async def autopilot_run(self, run_id: str) -> dict[str, Any] | None:
+        safe = self._quote(run_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.autopilot_runs WHERE run_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def autopilot_steps(self, run_id: str) -> list[dict[str, Any]]:
+        safe = self._quote(run_id)
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.autopilot_steps WHERE run_id = {safe} ORDER BY created_at ASC LIMIT 200")
+
+    async def insert_scheduler_item(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("scheduler_items", [row])
+
+    async def scheduler_items(self, limit: int = 200) -> list[dict[str, Any]]:
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.scheduler_items ORDER BY updated_at DESC LIMIT {self._limit(limit * 5)}")
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            item_id = str(row.get("item_id") or "")
+            if item_id and item_id not in latest:
+                latest[item_id] = row
+        return list(latest.values())[: self._limit(limit)]
+
+    async def scheduler_item(self, item_id: str) -> dict[str, Any] | None:
+        safe = self._quote(item_id)
+        rows = await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.scheduler_items WHERE item_id = {safe} ORDER BY updated_at DESC LIMIT 1")
+        return rows[0] if rows else None
+
+    async def insert_scheduler_decision(self, row: dict[str, Any]) -> int:
+        return await self.insert_rows("scheduler_decisions", [row])
+
+    async def scheduler_decisions(
+        self,
+        limit: int = 100,
+        item_id: str | None = None,
+        status: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> list[dict[str, Any]]:
+        where = self._where({"item_id": item_id, "status": status, "idempotency_key": idempotency_key})
+        return await self.fetch_json_rows(f"SELECT * FROM {self.settings.clickhouse_database}.scheduler_decisions {where} ORDER BY evaluated_at DESC LIMIT {self._limit(limit)}")
+
+    async def scheduler_run_count_since(self, item_id: str, since: str) -> int:
+        safe_item = self._quote(item_id)
+        safe_since = self._quote(since)
+        text = await self.fetch_text(f"SELECT count() FROM {self.settings.clickhouse_database}.scheduler_decisions WHERE item_id = {safe_item} AND status = 'run_started' AND evaluated_at >= parseDateTime64BestEffort({safe_since})")
+        return int(text.strip() or "0")
 
     @staticmethod
     def json_dumps(value: Any) -> str:
@@ -457,6 +645,14 @@ class ClickHouseClient:
 
     def _where(self, filters: dict[str, str | None]) -> str:
         clauses = [f"{key} = {self._quote(value)}" for key, value in filters.items() if value]
+        return "WHERE " + " AND ".join(clauses) if clauses else ""
+
+    def _audit_where(self, filters: dict[str, str | None], start_time: str | None = None, end_time: str | None = None) -> str:
+        clauses = [f"{key} = {self._quote(value)}" for key, value in filters.items() if value]
+        if start_time:
+            clauses.append(f"timestamp >= parseDateTime64BestEffort({self._quote(start_time)})")
+        if end_time:
+            clauses.append(f"timestamp <= parseDateTime64BestEffort({self._quote(end_time)})")
         return "WHERE " + " AND ".join(clauses) if clauses else ""
 
     def _latest_chaos_runs_query(self, filters: dict[str, str | None] | None = None) -> str:
@@ -506,6 +702,37 @@ def schema_statements(database: str = "cascade") -> list[str]:
     db = database
     return [
         f"CREATE DATABASE IF NOT EXISTS {db}",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.audit_events (
+    event_id String,
+    timestamp DateTime64(3),
+    event_type String,
+    subsystem String,
+    severity String,
+    run_id String,
+    correlation_id String,
+    service String,
+    namespace String,
+    actor String,
+    action String,
+    decision String,
+    status String,
+    risk_level String,
+    policy_decision_id String,
+    remediation_execution_id String,
+    verification_id String,
+    rollback_plan_id String,
+    autopilot_run_id String,
+    chaos_experiment_id String,
+    campaign_id String,
+    rca_report_id String,
+    topology_node_or_edge_id String,
+    evidence_summary String,
+    raw_payload_json String,
+    user_safe_message String
+) ENGINE = ReplacingMergeTree(timestamp)
+ORDER BY (timestamp, subsystem, service, event_id)
+""",
         f"""
 CREATE TABLE IF NOT EXISTS {db}.telemetry_events (
     event_id String,
@@ -611,14 +838,32 @@ CREATE TABLE IF NOT EXISTS {db}.telemetry_feature_windows (
     max_memory Float64,
     avg_latency_ms Float64,
     max_latency_ms Float64,
+    latency_p50_ms Float64,
+    latency_p95_ms Float64,
+    latency_p99_ms Float64,
+    request_rate Float64,
     error_rate Float64,
     restart_rate Float64,
     unhealthy_rate Float64,
+    readiness_rate Float64,
+    availability_rate Float64,
+    warning_event_count Float64,
+    missing_metric_count UInt64,
+    dependency_unhealthy_count UInt64,
     feature_vector_json String,
     source_query_hash String
 ) ENGINE = MergeTree
 ORDER BY (service, window_start, window_id)
 """,
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS latency_p50_ms Float64 AFTER max_latency_ms",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS latency_p95_ms Float64 AFTER latency_p50_ms",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS latency_p99_ms Float64 AFTER latency_p95_ms",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS request_rate Float64 AFTER latency_p99_ms",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS readiness_rate Float64 AFTER unhealthy_rate",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS availability_rate Float64 AFTER readiness_rate",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS warning_event_count Float64 AFTER availability_rate",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS missing_metric_count UInt64 AFTER warning_event_count",
+        f"ALTER TABLE {db}.telemetry_feature_windows ADD COLUMN IF NOT EXISTS dependency_unhealthy_count UInt64 AFTER missing_metric_count",
         f"""
 CREATE TABLE IF NOT EXISTS {db}.anomaly_events (
     anomaly_id String,
@@ -704,6 +949,24 @@ CREATE TABLE IF NOT EXISTS {db}.model_runs (
     error_message String
 ) ENGINE = MergeTree
 ORDER BY (started_at, run_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.rca_reports (
+    report_id String,
+    generated_at DateTime64(3),
+    status String,
+    target_service String,
+    likely_root_cause_service String,
+    confidence_score Float64,
+    affected_services_json String,
+    related_chaos_json String,
+    evidence_json String,
+    timeline_json String,
+    limitations_json String,
+    explanation String,
+    report_json String
+) ENGINE = ReplacingMergeTree(generated_at)
+ORDER BY (generated_at, report_id)
 """,
         f"""
 CREATE TABLE IF NOT EXISTS {db}.knowledge_documents (
@@ -978,6 +1241,68 @@ CREATE TABLE IF NOT EXISTS {db}.chaos_policy_audit (
 ORDER BY (checked_at, audit_id)
 """,
         f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_campaigns (
+    campaign_id String,
+    created_at DateTime64(3),
+    updated_at DateTime64(3),
+    status String,
+    name String,
+    target_namespace String,
+    allowed_services_json String,
+    experiment_templates_json String,
+    schedule_json String,
+    max_experiments_per_run UInt64,
+    blast_radius_limit Float64,
+    cooldown_seconds UInt64,
+    dry_run UInt8,
+    local_demo_execution_enabled UInt8,
+    stop_conditions_json String,
+    campaign_json String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (updated_at, campaign_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_campaign_runs (
+    run_id String,
+    campaign_id String,
+    started_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    status String,
+    dry_run UInt8,
+    requested_by String,
+    experiments_attempted UInt64,
+    experiments_succeeded UInt64,
+    experiments_blocked UInt64,
+    experiments_failed UInt64,
+    services_json String,
+    report_json String,
+    error_message String,
+    run_json String
+) ENGINE = ReplacingMergeTree(started_at)
+ORDER BY (started_at, run_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.chaos_campaign_steps (
+    step_id String,
+    run_id String,
+    campaign_id String,
+    created_at DateTime64(3),
+    sequence UInt64,
+    status String,
+    plan_id String,
+    chaos_run_id String,
+    experiment_kind String,
+    target_service String,
+    blocked_reason String,
+    evidence_before_json String,
+    evidence_after_json String,
+    result_json String,
+    cleanup_status String,
+    step_json String
+) ENGINE = MergeTree
+ORDER BY (run_id, sequence, created_at, step_id)
+""",
+        f"""
 CREATE TABLE IF NOT EXISTS {db}.remediation_plans (
     plan_id String,
     created_at DateTime64(3),
@@ -1044,6 +1369,52 @@ CREATE TABLE IF NOT EXISTS {db}.remediation_executions (
 ORDER BY (started_at, execution_id)
 """,
         f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_rollback_plans (
+    rollback_plan_id String,
+    execution_id String,
+    plan_id String,
+    created_at DateTime64(3),
+    updated_at DateTime64(3),
+    action_type String,
+    namespace String,
+    service String,
+    rollback_type String,
+    available UInt8,
+    auto_executable UInt8,
+    status String,
+    reason String,
+    snapshot_json String,
+    actions_json String,
+    result_json String,
+    rollback_plan_json String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (created_at, rollback_plan_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.remediation_verification_results (
+    verification_id String,
+    execution_id String,
+    plan_id String,
+    rollback_plan_id String,
+    created_at DateTime64(3),
+    completed_at DateTime64(3),
+    action_type String,
+    namespace String,
+    service String,
+    status String,
+    evidence_quality String,
+    rollback_status String,
+    summary String,
+    before_json String,
+    after_json String,
+    comparisons_json String,
+    limitations_json String,
+    rollback_json String,
+    verification_json String
+) ENGINE = ReplacingMergeTree(completed_at)
+ORDER BY (completed_at, verification_id)
+""",
+        f"""
 CREATE TABLE IF NOT EXISTS {db}.remediation_safety_violations (
     violation_id String,
     created_at DateTime64(3),
@@ -1072,4 +1443,96 @@ CREATE TABLE IF NOT EXISTS {db}.remediation_policy_audit (
 ) ENGINE = MergeTree
 ORDER BY (checked_at, audit_id)
 """,
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.autopilot_runs (
+    run_id String,
+    created_at DateTime64(3),
+    updated_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    status String,
+    final_result String,
+    mode String,
+    trigger_type String,
+    trigger_id String,
+    service String,
+    namespace String,
+    objective String,
+    anomaly_id String,
+    investigation_id String,
+    remediation_plan_id String,
+    approval_id String,
+    dry_run_execution_id String,
+    execution_id String,
+    proposed_action String,
+    error_message String,
+    evidence_json String,
+    recommendation_json String,
+    action_json String,
+    verification_json String,
+    run_json String
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (created_at, run_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.autopilot_steps (
+    step_id String,
+    run_id String,
+    created_at DateTime64(3),
+    state String,
+    status String,
+    summary String,
+    input_json String,
+    output_json String,
+    error_message String,
+    step_json String
+) ENGINE = MergeTree
+ORDER BY (run_id, created_at, step_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.scheduler_items (
+    item_id String,
+    item_type String,
+    target_id String,
+    name String,
+    schedule_json String,
+    enabled UInt8,
+    paused UInt8,
+    mode String,
+    next_run_at Nullable(DateTime64(3)),
+    last_run_at Nullable(DateTime64(3)),
+    cooldown_seconds UInt64,
+    max_runs_per_window UInt64,
+    window_seconds UInt64,
+    failure_count UInt64,
+    status String,
+    payload_json String,
+    updated_at DateTime64(3)
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (item_id)
+""",
+        f"""
+CREATE TABLE IF NOT EXISTS {db}.scheduler_decisions (
+    decision_id String,
+    item_id String,
+    item_type String,
+    target_id String,
+    evaluated_at DateTime64(3),
+    due_at Nullable(DateTime64(3)),
+    status String,
+    action String,
+    reason String,
+    idempotency_key String,
+    run_id String,
+    dry_run UInt8,
+    skipped_missed_windows UInt64,
+    payload_json String,
+    error_message String
+) ENGINE = MergeTree
+ORDER BY (item_id, evaluated_at, decision_id)
+""",
+        f"ALTER TABLE {db}.telemetry_events MODIFY TTL toDateTime(observed_at) + INTERVAL 14 DAY DELETE",
+        f"ALTER TABLE {db}.telemetry_feature_windows MODIFY TTL toDateTime(window_end) + INTERVAL 45 DAY DELETE",
+        f"ALTER TABLE {db}.anomaly_events MODIFY TTL toDateTime(detected_at) + INTERVAL 90 DAY DELETE",
+        f"ALTER TABLE {db}.experiment_events MODIFY TTL toDateTime(observed_at) + INTERVAL 90 DAY DELETE",
+        f"ALTER TABLE {db}.model_runs MODIFY TTL toDateTime(completed_at) + INTERVAL 90 DAY DELETE",
     ]

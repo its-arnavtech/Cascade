@@ -20,17 +20,19 @@ def build_investigation_report(state: AgentState) -> dict[str, Any]:
     topology = state.topology_evidence
     blast_radius = state.blast_radius_evidence
     causal_reports = state.causal_report_evidence
+    rca_reports = state.rca_evidence
     target_workloads = state.target_workload_evidence
     telemetry = state.telemetry_evidence
     affected = _affected_services(topology, service)
     affected = _affected_services(blast_radius, service) if len(_affected_services(blast_radius, service)) > len(affected) else affected
-    suspected = _suspected_root_cause(service, anomaly_refs, telemetry)
+    suspected = _suspected_root_cause(service, anomaly_refs, telemetry, rca_reports)
     evidence = _evidence_refs(state)
     hypothesis = _hypothesis(service, suspected, anomaly_refs, causal_reports)
     supporting_evidence = _supporting_evidence(evidence)
     rejected_alternatives = _rejected_alternatives(service, state)
     confidence, confidence_rationale = _confidence(state, evidence)
     causal_report_summary = _causal_report_summary(causal_reports)
+    rca_summary = _rca_summary(rca_reports)
     topology_blast_radius_summary = _topology_blast_radius_summary(blast_radius or topology, affected)
     knowledge_citations = _knowledge_citations(knowledge_refs)
     limitations = _limitations(state)
@@ -60,6 +62,7 @@ def build_investigation_report(state: AgentState) -> dict[str, Any]:
         rejected_alternatives,
         confidence_rationale,
         causal_report_summary,
+        rca_summary,
         topology_blast_radius_summary,
         knowledge_citations,
         limitations,
@@ -79,12 +82,14 @@ def build_investigation_report(state: AgentState) -> dict[str, Any]:
         "rejected_alternatives": rejected_alternatives,
         "confidence_rationale": confidence_rationale,
         "causal_report_summary": causal_report_summary,
+        "rca_summary": rca_summary,
         "topology_blast_radius_summary": topology_blast_radius_summary,
         "knowledge_citations": knowledge_citations,
         "timeline": state.timeline_evidence,
         "anomaly_refs": anomaly_refs,
         "knowledge_refs": knowledge_refs,
         "causal_report_refs": causal_reports,
+        "rca_refs": rca_reports,
         "target_workload_refs": target_workloads,
         "recommended_next_steps": next_steps,
         "recommended_next_action": recommended_next_action,
@@ -120,6 +125,7 @@ def _evidence_refs(state: AgentState) -> list[dict[str, Any]]:
         ("topology", state.topology_evidence),
         ("blast_radius", state.blast_radius_evidence),
         ("causal_report", state.causal_report_evidence),
+        ("rca", state.rca_evidence),
         ("target_workload", state.target_workload_evidence),
         ("knowledge", state.knowledge_evidence),
         ("incident", state.incident_refs),
@@ -226,6 +232,7 @@ def _confidence(state: AgentState, evidence: list[dict[str, Any]]) -> tuple[floa
         "telemetry": bool(state.telemetry_evidence),
         "topology/blast-radius": bool(state.topology_evidence or state.blast_radius_evidence),
         "causal": bool(state.causal_report_evidence),
+        "rca": bool(state.rca_evidence),
         "knowledge": bool(state.knowledge_evidence),
         "incident-history": bool(state.incident_refs),
         "target-workload": bool(state.target_workload_evidence),
@@ -258,6 +265,19 @@ def _causal_report_summary(causal_reports: list[dict[str, Any]]) -> str:
     chain_text = " -> ".join(str(item) for item in chain[:6]) if isinstance(chain, list) and chain else "none cited"
     affected_text = ", ".join(str(item) for item in affected[:8]) if isinstance(affected, list) and affected else "none cited"
     return f"Causal report root={root}, confidence={confidence}, chain={chain_text}, affected={affected_text}."
+
+
+def _rca_summary(rca_reports: list[dict[str, Any]]) -> str:
+    if not rca_reports:
+        return "No RCA evidence bundle was available."
+    report = rca_reports[0].get("report", rca_reports[0])
+    if not isinstance(report, dict):
+        return "RCA endpoint returned an unreadable report shape."
+    root = report.get("likely_root_cause_service") or "unknown"
+    confidence = report.get("confidence_score") or 0.0
+    status = report.get("status") or "unknown"
+    explanation = report.get("explanation") or ""
+    return f"RCA bundle status={status}, root={root}, confidence={confidence}: {explanation}"
 
 
 def _topology_blast_radius_summary(blast_rows: list[dict[str, Any]], affected: list[str]) -> str:
@@ -310,7 +330,11 @@ def _recommended_next_action(confidence: float, evidence: list[dict[str, Any]], 
     return f"Have an operator review the cited evidence for {service} and choose a human-approved response plan."
 
 
-def _suspected_root_cause(service: str, anomalies: list[dict[str, Any]], telemetry: list[dict[str, Any]]) -> str:
+def _suspected_root_cause(service: str, anomalies: list[dict[str, Any]], telemetry: list[dict[str, Any]], rca_reports: list[dict[str, Any]]) -> str:
+    if rca_reports:
+        report = rca_reports[0].get("report", rca_reports[0])
+        if isinstance(report, dict) and report.get("likely_root_cause_service"):
+            return f"{report['likely_root_cause_service']} RCA: {str(report.get('explanation') or '')[:300]}"
     if anomalies:
         top = anomalies[0]
         explanation = top.get("explanation", "")
@@ -333,6 +357,7 @@ def _markdown(
     rejected_alternatives: list[dict[str, str]],
     confidence_rationale: str,
     causal_report_summary: str,
+    rca_summary: str,
     topology_blast_radius_summary: str,
     knowledge_citations: list[dict[str, str]],
     limitations: list[str],
@@ -354,6 +379,8 @@ def _markdown(
         f"Confidence rationale: {confidence_rationale}",
         "",
         f"Causal report summary: {causal_report_summary}",
+        "",
+        f"RCA summary: {rca_summary}",
         "",
         f"Topology blast-radius summary: {topology_blast_radius_summary}",
         "",

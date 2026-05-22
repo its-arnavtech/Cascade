@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_raw_topic: str = "telemetry.raw"
     telemetry_publish_interval_seconds: float = 10.0
+    redpanda_health_url: str = "http://redpanda.cascade-system.svc.cluster.local:9644/v1/status/ready"
+    clickhouse_health_url: str = "http://clickhouse.cascade-system.svc.cluster.local:8123/ping"
+    qdrant_health_url: str = "http://qdrant.cascade-system.svc.cluster.local:6333/readyz"
 
     model_config = SettingsConfigDict(env_prefix="", case_sensitive=False)
 

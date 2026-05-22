@@ -68,6 +68,28 @@ spec:
             initialDelaySeconds: 90
             periodSeconds: 20
             failureThreshold: 10
+          volumeMounts:
+            - name: redpanda-data
+              mountPath: /var/lib/redpanda/data
+      volumes:
+        - name: redpanda-data
+          persistentVolumeClaim:
+            claimName: redpanda-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redpanda-data
+  namespace: cascade-system
+  labels:
+    app: redpanda
+    cascade.io/state: durable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
 ---
 apiVersion: v1
 kind: Service
@@ -116,8 +138,27 @@ spec:
                 sleep 5
               done
 
-              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments remediation.actions causality.reports; do
-                rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" || true
+              configure_topic() {
+                topic="$1"
+                retention_ms="$2"
+                retention_bytes="$3"
+                rpk -X brokers="${REDPANDA_BROKERS}" topic create "${topic}" -c cleanup.policy=delete -c retention.ms="${retention_ms}" -c retention.bytes="${retention_bytes}" || true
+                rpk -X brokers="${REDPANDA_BROKERS}" topic alter-config "${topic}" --set cleanup.policy=delete --set retention.ms="${retention_ms}" --set retention.bytes="${retention_bytes}" || true
+                rpk -X brokers="${REDPANDA_BROKERS}" topic describe "${topic}" >/dev/null
+              }
+
+              configure_topic telemetry.raw 604800000 536870912
+              configure_topic telemetry.enriched 1209600000 1073741824
+              configure_topic experiments.events 7776000000 268435456
+              configure_topic anomalies.detected 7776000000 268435456
+              configure_topic agent.investigations 15552000000 268435456
+              configure_topic chaos.experiments 15552000000 268435456
+              configure_topic remediation.actions 15552000000 268435456
+              configure_topic causality.reports 15552000000 268435456
+              configure_topic autopilot.runs 15552000000 268435456
+
+              for topic in telemetry.raw telemetry.enriched experiments.events anomalies.detected agent.investigations chaos.experiments remediation.actions causality.reports autopilot.runs; do
+                rpk -X brokers="${REDPANDA_BROKERS}" topic describe "${topic}" >/dev/null
               done
 
               rpk -X brokers="${REDPANDA_BROKERS}" topic list
@@ -180,6 +221,28 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 20
             failureThreshold: 6
+          volumeMounts:
+            - name: clickhouse-data
+              mountPath: /var/lib/clickhouse
+      volumes:
+        - name: clickhouse-data
+          persistentVolumeClaim:
+            claimName: clickhouse-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: clickhouse-data
+  namespace: cascade-system
+  labels:
+    app: clickhouse
+    cascade.io/state: durable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
 ---
 apiVersion: v1
 kind: Service
@@ -228,6 +291,34 @@ spec:
               until clickhouse-client --host clickhouse --query "SELECT 1"; do sleep 3; done
               clickhouse-client --host clickhouse --multiquery <<'SQL'
               CREATE DATABASE IF NOT EXISTS cascade;
+              CREATE TABLE IF NOT EXISTS cascade.audit_events (
+                  event_id String,
+                  timestamp DateTime64(3),
+                  event_type String,
+                  subsystem String,
+                  severity String,
+                  run_id String,
+                  correlation_id String,
+                  service String,
+                  namespace String,
+                  actor String,
+                  action String,
+                  decision String,
+                  status String,
+                  risk_level String,
+                  policy_decision_id String,
+                  remediation_execution_id String,
+                  verification_id String,
+                  rollback_plan_id String,
+                  autopilot_run_id String,
+                  chaos_experiment_id String,
+                  campaign_id String,
+                  rca_report_id String,
+                  topology_node_or_edge_id String,
+                  evidence_summary String,
+                  raw_payload_json String,
+                  user_safe_message String
+              ) ENGINE = ReplacingMergeTree(timestamp) ORDER BY (timestamp, subsystem, service, event_id);
               CREATE TABLE IF NOT EXISTS cascade.telemetry_events (
                   event_id String,
                   observed_at DateTime64(3),
@@ -317,9 +408,18 @@ spec:
                   max_memory Float64,
                   avg_latency_ms Float64,
                   max_latency_ms Float64,
+                  latency_p50_ms Float64,
+                  latency_p95_ms Float64,
+                  latency_p99_ms Float64,
+                  request_rate Float64,
                   error_rate Float64,
                   restart_rate Float64,
                   unhealthy_rate Float64,
+                  readiness_rate Float64,
+                  availability_rate Float64,
+                  warning_event_count Float64,
+                  missing_metric_count UInt64,
+                  dependency_unhealthy_count UInt64,
                   feature_vector_json String,
                   source_query_hash String
               ) ENGINE = MergeTree ORDER BY (service, window_start, window_id);
@@ -386,6 +486,22 @@ spec:
                   candidate_json String
               ) ENGINE = ReplacingMergeTree(generated_at)
               ORDER BY (report_id, rank, candidate_id);
+              CREATE TABLE IF NOT EXISTS cascade.rca_reports (
+                  report_id String,
+                  generated_at DateTime64(3),
+                  target_service String,
+                  likely_root_cause_service String,
+                  status String,
+                  confidence_score Float64,
+                  affected_services_json String,
+                  related_chaos_json String,
+                  evidence_json String,
+                  timeline_json String,
+                  limitations_json String,
+                  explanation String,
+                  report_json String
+              ) ENGINE = ReplacingMergeTree(generated_at)
+              ORDER BY (generated_at, report_id);
               CREATE TABLE IF NOT EXISTS cascade.model_runs (
                   run_id String,
                   started_at DateTime64(3),
@@ -636,6 +752,59 @@ spec:
                   findings_json String,
                   policy_json String
               ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_campaigns (
+                  campaign_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  status String,
+                  name String,
+                  target_namespace String,
+                  allowed_services_json String,
+                  experiment_templates_json String,
+                  schedule_json String,
+                  max_experiments_per_run UInt64,
+                  blast_radius_limit Float64,
+                  cooldown_seconds UInt64,
+                  dry_run UInt8,
+                  local_demo_execution_enabled UInt8,
+                  stop_conditions_json String,
+                  campaign_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (updated_at, campaign_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_campaign_runs (
+                  run_id String,
+                  campaign_id String,
+                  started_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  dry_run UInt8,
+                  requested_by String,
+                  experiments_attempted UInt64,
+                  experiments_succeeded UInt64,
+                  experiments_blocked UInt64,
+                  experiments_failed UInt64,
+                  services_json String,
+                  report_json String,
+                  error_message String,
+                  run_json String
+              ) ENGINE = ReplacingMergeTree(started_at) ORDER BY (started_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.chaos_campaign_steps (
+                  step_id String,
+                  run_id String,
+                  campaign_id String,
+                  created_at DateTime64(3),
+                  sequence UInt64,
+                  status String,
+                  plan_id String,
+                  chaos_run_id String,
+                  experiment_kind String,
+                  target_service String,
+                  blocked_reason String,
+                  evidence_before_json String,
+                  evidence_after_json String,
+                  result_json String,
+                  cleanup_status String,
+                  step_json String
+              ) ENGINE = MergeTree ORDER BY (run_id, sequence, created_at, step_id);
               CREATE TABLE IF NOT EXISTS cascade.remediation_plans (
                   plan_id String,
                   created_at DateTime64(3),
@@ -693,6 +862,46 @@ spec:
                   error_message String,
                   execution_json String
               ) ENGINE = ReplacingMergeTree(started_at) ORDER BY (started_at, execution_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_rollback_plans (
+                  rollback_plan_id String,
+                  execution_id String,
+                  plan_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  action_type String,
+                  namespace String,
+                  service String,
+                  rollback_type String,
+                  available UInt8,
+                  auto_executable UInt8,
+                  status String,
+                  reason String,
+                  snapshot_json String,
+                  actions_json String,
+                  result_json String,
+                  rollback_plan_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (created_at, rollback_plan_id);
+              CREATE TABLE IF NOT EXISTS cascade.remediation_verification_results (
+                  verification_id String,
+                  execution_id String,
+                  plan_id String,
+                  rollback_plan_id String,
+                  created_at DateTime64(3),
+                  completed_at DateTime64(3),
+                  action_type String,
+                  namespace String,
+                  service String,
+                  status String,
+                  evidence_quality String,
+                  rollback_status String,
+                  summary String,
+                  before_json String,
+                  after_json String,
+                  comparisons_json String,
+                  limitations_json String,
+                  rollback_json String,
+                  verification_json String
+              ) ENGINE = ReplacingMergeTree(completed_at) ORDER BY (completed_at, verification_id);
               CREATE TABLE IF NOT EXISTS cascade.remediation_safety_violations (
                   violation_id String,
                   created_at DateTime64(3),
@@ -716,6 +925,86 @@ spec:
                   findings_json String,
                   policy_json String
               ) ENGINE = MergeTree ORDER BY (checked_at, audit_id);
+              CREATE TABLE IF NOT EXISTS cascade.autopilot_runs (
+                  run_id String,
+                  created_at DateTime64(3),
+                  updated_at DateTime64(3),
+                  completed_at Nullable(DateTime64(3)),
+                  status String,
+                  final_result String,
+                  mode String,
+                  trigger_type String,
+                  trigger_id String,
+                  service String,
+                  namespace String,
+                  objective String,
+                  anomaly_id String,
+                  investigation_id String,
+                  remediation_plan_id String,
+                  approval_id String,
+                  dry_run_execution_id String,
+                  execution_id String,
+                  proposed_action String,
+                  error_message String,
+                  evidence_json String,
+                  recommendation_json String,
+                  action_json String,
+                  verification_json String,
+                  run_json String
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (created_at, run_id);
+              CREATE TABLE IF NOT EXISTS cascade.autopilot_steps (
+                  step_id String,
+                  run_id String,
+                  created_at DateTime64(3),
+                  state String,
+                  status String,
+                  summary String,
+                  input_json String,
+                  output_json String,
+                  error_message String,
+                  step_json String
+              ) ENGINE = MergeTree ORDER BY (run_id, created_at, step_id);
+              CREATE TABLE IF NOT EXISTS cascade.scheduler_items (
+                  item_id String,
+                  item_type String,
+                  target_id String,
+                  name String,
+                  schedule_json String,
+                  enabled UInt8,
+                  paused UInt8,
+                  mode String,
+                  next_run_at Nullable(DateTime64(3)),
+                  last_run_at Nullable(DateTime64(3)),
+                  cooldown_seconds UInt64,
+                  max_runs_per_window UInt64,
+                  window_seconds UInt64,
+                  failure_count UInt64,
+                  status String,
+                  payload_json String,
+                  updated_at DateTime64(3)
+              ) ENGINE = ReplacingMergeTree(updated_at) ORDER BY (item_id);
+              CREATE TABLE IF NOT EXISTS cascade.scheduler_decisions (
+                  decision_id String,
+                  item_id String,
+                  item_type String,
+                  target_id String,
+                  evaluated_at DateTime64(3),
+                  due_at Nullable(DateTime64(3)),
+                  status String,
+                  action String,
+                  reason String,
+                  idempotency_key String,
+                  run_id String,
+                  dry_run UInt8,
+                  skipped_missed_windows UInt64,
+                  payload_json String,
+                  error_message String
+              ) ENGINE = MergeTree ORDER BY (item_id, evaluated_at, decision_id);
+              ALTER TABLE cascade.telemetry_events MODIFY TTL toDateTime(observed_at) + INTERVAL 14 DAY DELETE;
+              ALTER TABLE cascade.telemetry_feature_windows MODIFY TTL toDateTime(window_end) + INTERVAL 45 DAY DELETE;
+              ALTER TABLE cascade.anomaly_events MODIFY TTL toDateTime(detected_at) + INTERVAL 90 DAY DELETE;
+              ALTER TABLE cascade.experiment_events MODIFY TTL toDateTime(observed_at) + INTERVAL 90 DAY DELETE;
+              ALTER TABLE cascade.model_runs MODIFY TTL toDateTime(completed_at) + INTERVAL 90 DAY DELETE;
               SQL
 ---
 apiVersion: apps/v1
@@ -772,6 +1061,28 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 20
             failureThreshold: 6
+          volumeMounts:
+            - name: qdrant-data
+              mountPath: /qdrant/storage
+      volumes:
+        - name: qdrant-data
+          persistentVolumeClaim:
+            claimName: qdrant-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-data
+  namespace: cascade-system
+  labels:
+    app: qdrant
+    cascade.io/state: durable
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
 ---
 apiVersion: v1
 kind: Service
@@ -827,6 +1138,7 @@ spec:
               curl -sf -X PATCH http://qdrant:6333/collections/cascade_incident_memory \
                 -H 'Content-Type: application/json' \
                 --data '{"optimizers_config":{"indexing_threshold":1000}}'
+              curl -sf http://qdrant:6333/collections/cascade_incident_memory >/dev/null
               code="$(curl -s -o /tmp/qdrant-knowledge-init-response -w '%{http_code}' -X PUT http://qdrant:6333/collections/cascade_knowledge_base \
                 -H 'Content-Type: application/json' \
                 --data '{"vectors":{"size":128,"distance":"Cosine"},"optimizers_config":{"indexing_threshold":1000}}')"
@@ -835,6 +1147,7 @@ spec:
                 curl -sf -X PATCH http://qdrant:6333/collections/cascade_knowledge_base \
                   -H 'Content-Type: application/json' \
                   --data '{"optimizers_config":{"indexing_threshold":1000}}'
+                curl -sf http://qdrant:6333/collections/cascade_knowledge_base >/dev/null
                 exit 0
               fi
               cat /tmp/qdrant-knowledge-init-response
@@ -1160,6 +1473,39 @@ spec:
       port: 8005
       targetPort: http
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: topology-service
+  namespace: cascade-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: topology-service-target-reader
+  namespace: cascade-targets
+rules:
+  - apiGroups: [""]
+    resources: ["services", "pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: topology-service-target-reader
+  namespace: cascade-targets
+subjects:
+  - kind: ServiceAccount
+    name: topology-service
+    namespace: cascade-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: topology-service-target-reader
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1177,6 +1523,7 @@ spec:
       labels:
         app: topology-service
     spec:
+      serviceAccountName: topology-service
       containers:
         - name: topology-service
           image: cascade-topology-service:dev
@@ -2018,6 +2365,16 @@ spec:
               value: http://topology-service.cascade-system.svc.cluster.local:8004
             - name: RETRIEVAL_SERVICE_URL
               value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:
@@ -2175,6 +2532,18 @@ spec:
               value: "true"
             - name: CASCADE_REQUIRE_DRY_RUN_FIRST
               value: "true"
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
+            - name: CASCADE_APPROVAL_SIGNING_SECRET
+              value: ""
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:
@@ -2325,6 +2694,18 @@ spec:
               value: redpanda.cascade-system.svc.cluster.local:9092
             - name: REMEDIATION_EVENTS_TOPIC
               value: remediation.actions
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
+            - name: CASCADE_APPROVAL_SIGNING_SECRET
+              value: ""
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:
@@ -2452,6 +2833,18 @@ spec:
               value: "true"
             - name: CASCADE_REQUIRE_DRY_RUN_FIRST
               value: "true"
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
+            - name: CASCADE_APPROVAL_SIGNING_SECRET
+              value: ""
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:
@@ -2487,6 +2880,188 @@ spec:
   ports:
     - name: http
       port: 8023
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autopilot-service
+  namespace: cascade-system
+  labels:
+    app: autopilot-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: autopilot-service
+  template:
+    metadata:
+      labels:
+        app: autopilot-service
+    spec:
+      containers:
+        - name: autopilot-service
+          image: cascade-autopilot-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8024
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: RETRIEVAL_SERVICE_URL
+              value: http://retrieval-service.cascade-system.svc.cluster.local:8012
+            - name: ANOMALY_DETECTOR_SERVICE_URL
+              value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
+            - name: AGENT_ORCHESTRATOR_SERVICE_URL
+              value: http://agent-orchestrator-service.cascade-system.svc.cluster.local:8018
+            - name: REMEDIATION_RECOMMENDER_SERVICE_URL
+              value: http://remediation-recommender-service.cascade-system.svc.cluster.local:8021
+            - name: APPROVAL_SERVICE_URL
+              value: http://approval-service.cascade-system.svc.cluster.local:8022
+            - name: REMEDIATION_EXECUTOR_SERVICE_URL
+              value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: redpanda.cascade-system.svc.cluster.local:9092
+            - name: AUTOPILOT_EVENTS_TOPIC
+              value: autopilot.runs
+            - name: DEFAULT_MODE
+              value: dry_run
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 160Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: autopilot-service
+  namespace: cascade-system
+  labels:
+    app: autopilot-service
+spec:
+  selector:
+    app: autopilot-service
+  ports:
+    - name: http
+      port: 8024
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-service
+  namespace: cascade-system
+  labels:
+    app: scheduler-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler-service
+  template:
+    metadata:
+      labels:
+        app: scheduler-service
+    spec:
+      containers:
+        - name: scheduler-service
+          image: cascade-scheduler-service:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8025
+          env:
+            - name: CLICKHOUSE_HOST
+              value: clickhouse.cascade-system.svc.cluster.local
+            - name: CLICKHOUSE_HTTP_PORT
+              value: "8123"
+            - name: CLICKHOUSE_DATABASE
+              value: cascade
+            - name: CHAOS_PLANNER_SERVICE_URL
+              value: http://chaos-planner-service.cascade-system.svc.cluster.local:8019
+            - name: AUTOPILOT_SERVICE_URL
+              value: http://autopilot-service.cascade-system.svc.cluster.local:8024
+            - name: SCHEDULER_POLL_INTERVAL_SECONDS
+              value: "30"
+            - name: SCHEDULER_ENABLED
+              value: "true"
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
+            - name: WEB_CONCURRENCY
+              value: "1"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 75m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler-service
+  namespace: cascade-system
+  labels:
+    app: scheduler-service
+spec:
+  selector:
+    app: scheduler-service
+  ports:
+    - name: http
+      port: 8025
       targetPort: http
 ---
 apiVersion: apps/v1
@@ -2532,6 +3107,10 @@ spec:
               value: http://approval-service.cascade-system.svc.cluster.local:8022
             - name: REMEDIATION_EXECUTOR_SERVICE_URL
               value: http://remediation-executor-service.cascade-system.svc.cluster.local:8023
+            - name: AUTOPILOT_SERVICE_URL
+              value: http://autopilot-service.cascade-system.svc.cluster.local:8024
+            - name: SCHEDULER_SERVICE_URL
+              value: http://scheduler-service.cascade-system.svc.cluster.local:8025
             - name: ANOMALY_DETECTOR_SERVICE_URL
               value: http://anomaly-detector-service.cascade-system.svc.cluster.local:8014
             - name: FEATURE_EXTRACTOR_SERVICE_URL
@@ -2546,6 +3125,16 @@ spec:
               value: "120"
             - name: RATE_LIMIT_BURST
               value: "60"
+            - name: CASCADE_AUTH_ENABLED
+              value: "false"
+            - name: CASCADE_LOCAL_DEMO_AUTH_BYPASS
+              value: "false"
+            - name: CASCADE_API_KEYS
+              value: ""
+            - name: CASCADE_API_KEY_HASHES
+              value: ""
+            - name: CASCADE_AUTH_HEADER
+              value: Authorization
             - name: WEB_CONCURRENCY
               value: "1"
           readinessProbe:

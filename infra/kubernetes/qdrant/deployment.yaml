@@ -52,3 +52,10 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 20
             failureThreshold: 6
+          volumeMounts:
+            - name: qdrant-data
+              mountPath: /qdrant/storage
+      volumes:
+        - name: qdrant-data
+          persistentVolumeClaim:
+            claimName: qdrant-data

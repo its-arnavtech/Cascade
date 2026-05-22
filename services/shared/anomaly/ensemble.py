@@ -12,6 +12,7 @@ from services.shared.features.extraction import ch_datetime
 def combine_results(window: dict[str, Any], results: list[ModelResult], publish_threshold: float = 0.4) -> dict[str, Any]:
     risk = max((result.risk_score for result in results), default=0.0)
     is_anomaly = any(result.is_anomaly for result in results) or risk >= publish_threshold
+    insufficient = any((result.evidence or {}).get("status") == "insufficient_data" or (result.evidence or {}).get("insufficient_data") for result in results)
     severity = severity_for_risk(risk)
     explanation = " | ".join(result.explanation for result in results if result.explanation)
     evidence = {
@@ -39,7 +40,7 @@ def combine_results(window: dict[str, Any], results: list[ModelResult], publish_
         "window_start": str(window.get("window_start") or ch_datetime(detected_at)),
         "window_end": str(window.get("window_end") or ch_datetime(detected_at)),
         "severity": severity,
-        "status": "detected" if is_anomaly else "normal",
+        "status": "detected" if is_anomaly else "insufficient_data" if insufficient else "normal",
         "anomaly_score": max((abs(result.score) for result in results), default=0.0),
         "risk_score": risk,
         "model_name": "cascade_baseline_ensemble",
