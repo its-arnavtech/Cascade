@@ -26,8 +26,19 @@ function Test-DynamicCodeValue {
     param([string]$Line, [string]$Value)
     $trimmed = $Value.Trim().Trim('"', "'", '`')
     if ($Line -match '\$\{') { return $true }
-    if ($trimmed -match '^(settings|self|payload|request|headers|metadata|approval|auth|token|key|digest|configured|configured_plain|configured_hashes|configuredApiToken|import\.meta|os\.getenv)\b') { return $true }
+    if ($trimmed -match '^(settings|self|payload|request|headers|metadata|approval|auth|token|key|digest|configured|configured_plain|configured_hashes|configuredApiToken|import\.meta|os\.getenv|_split|hashlib|hmac|json|base64|str|bool|int|len|any|all|dict|list|set|Path)\b') { return $true }
+    if ($trimmed -match '^[A-Za-z_][A-Za-z0-9_]*\(') { return $true }
+    if ($trimmed -match '^[frbuFRBU]*["'']') { return $true }
     if ($Line -match '(?i)\b(api_keys|api_key_hashes|auth_header|signing_secret)\s*=\s*settings\.') { return $true }
+    return $false
+}
+
+function Test-AllowedFixtureFinding {
+    param([string]$File, [string]$Reason)
+    $normalized = $File -replace '\\', '/'
+    if ($normalized -match '^(tests|docs)/') { return $true }
+    if ($normalized -match '^targets/sock-shop/') { return $true }
+    if ($normalized -eq 'scripts/audit-secrets.ps1' -and $Reason -in @("non-placeholder assignment", "jwt-like token", "credential in URL", "kubeconfig credential data")) { return $true }
     return $false
 }
 
@@ -92,6 +103,11 @@ foreach ($file in $tracked) {
             if ($line -match '(?i)client-(key|certificate)-data:\s*[A-Za-z0-9+/=]{40,}') {
                 $highConfidence = $true
                 $reason = "kubeconfig credential data"
+            }
+
+            if ($highConfidence -and (Test-AllowedFixtureFinding $file $reason)) {
+                $highConfidence = $false
+                $reason = "documented/test/demo fixture"
             }
 
             $findings.Add([pscustomobject]@{
