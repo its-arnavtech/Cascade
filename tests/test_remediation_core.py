@@ -51,6 +51,14 @@ class Phase8CoreTests(unittest.TestCase):
         self.assertFalse(result.allowed)
         self.assertTrue(any("Post-checks" in item for item in result.violations))
 
+    def test_mutating_plan_requires_human_approval(self) -> None:
+        plan = self._plan("restart_deployment")
+        self.assertTrue(plan["plan"]["human_approval_required"])
+
+    def test_investigate_only_plan_does_not_require_approval(self) -> None:
+        plan = self._plan("investigate_only")
+        self.assertFalse(plan["plan"]["human_approval_required"])
+
     def test_demo_real_remediation_execution_payload_satisfies_schema(self) -> None:
         payload = ExecutionRequest(plan_id="rem_plan_demo", approval_id="rem_approval_demo", dry_run=False)
 

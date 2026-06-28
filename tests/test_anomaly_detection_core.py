@@ -41,12 +41,56 @@ class Phase4CoreTests(unittest.TestCase):
         first = extract_feature_windows([event], 300, datetime(2026, 5, 13, tzinfo=UTC))
         second = extract_feature_windows([event], 300, datetime(2026, 5, 13, tzinfo=UTC))
         self.assertEqual(first[0]["window_id"], second[0]["window_id"])
-        self.assertEqual(first[0]["restart_rate"], 1.0)
+        # A single sample of the cumulative restart counter shows no in-window
+        # restart, so restart_rate must be 0 (the counter did not increase).
+        self.assertEqual(first[0]["restart_rate"], 0.0)
+
+    def test_restart_rate_uses_cumulative_counter_delta(self) -> None:
+        # restart_count is the cumulative kube counter. A steady (already-restarted)
+        # pod must NOT be flagged; only an in-window increase counts as a restart.
+        steady = [
+            {
+                "observed_at": "2026-05-13 18:00:01.000",
+                "service": "carts",
+                "numeric_features_json": '{"restart_count":22}',
+            }
+            for _ in range(5)
+        ]
+        rows = extract_feature_windows(steady, 300)
+        self.assertEqual(rows[0]["restart_rate"], 0.0)
+        self.assertEqual(rows[0]["restart_signal_count"], 0)
+
+        restarting = [
+            {"observed_at": "2026-05-13 18:00:01.000", "service": "carts", "numeric_features_json": '{"restart_count":22}'},
+            {"observed_at": "2026-05-13 18:02:01.000", "service": "carts", "numeric_features_json": '{"restart_count":24}'},
+        ]
+        rows = extract_feature_windows(restarting, 300)
+        self.assertEqual(rows[0]["restart_signal_count"], 2)
+        self.assertGreater(rows[0]["restart_rate"], 0.0)
+        self.assertLessEqual(rows[0]["restart_rate"], 1.0)
 
     def test_feature_extraction_handles_missing_fields(self) -> None:
         rows = extract_feature_windows([{"observed_at": "2026-05-13 18:00:01.000"}], 300)
         self.assertEqual(rows[0]["service"], "unknown")
         self.assertEqual(rows[0]["avg_cpu"], 0.0)
+
+    def test_error_rate_stays_within_unit_interval(self) -> None:
+        # Each event is both error-status AND reports a positive RED error_rate;
+        # it must be counted once, not twice (error_rate is a rate in [0, 1]).
+        events = [
+            {
+                "observed_at": "2026-05-13 18:00:01.000",
+                "service": "carts",
+                "health_status": "error",
+                "numeric_features_json": '{"error_rate":0.1}',
+            }
+            for _ in range(4)
+        ]
+        rows = extract_feature_windows(events, 300)
+        self.assertEqual(rows[0]["event_count"], 4)
+        self.assertLessEqual(rows[0]["error_count"], rows[0]["event_count"])
+        self.assertLessEqual(rows[0]["error_rate"], 1.0)
+        self.assertGreater(rows[0]["error_rate"], 0.0)
 
     def test_threshold_detector_flags_rates(self) -> None:
         result = threshold_detect({"unhealthy_rate": 0.9, "error_rate": 0.6, "restart_rate": 0.7, "latency_p95_ms": 900.0, "availability_rate": 0.95, "event_count": 20})

@@ -63,7 +63,10 @@ def build_plan(request: RemediationPlanRequest, evidence_refs: list[dict[str, An
     plan["risk_score"] = safety.risk_score
     plan["safety_findings"] = safety.findings + safety.violations
     plan["policy_decision"] = safety.policy_decision
-    plan_body["human_approval_required"] = bool(safety.policy_decision.get("requires_approval", plan_body["human_approval_required"]))
+    # A mutating recommendation must never be downgraded to "no approval needed" by
+    # the dry-run validation step (dry-runs always report requires_approval=False).
+    # The policy decision may only raise the requirement, never lower it.
+    plan_body["human_approval_required"] = bool(plan_body["human_approval_required"] or safety.policy_decision.get("requires_approval", False))
     plan_body["policy_decision"] = safety.policy_decision
     return plan
 

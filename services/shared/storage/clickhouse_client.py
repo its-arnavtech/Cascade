@@ -66,8 +66,17 @@ class ClickHouseClient:
         return rows
 
     async def initialize_schema(self) -> None:
+        await self._wait_until_ready()
         for statement in schema_statements(self.settings.clickhouse_database):
-            await self.execute(statement)
+            await self._with_retry(lambda stmt=statement: self.execute(stmt))
+
+    async def _wait_until_ready(self, attempts: int = 20, delay: float = 1.5) -> None:
+        for attempt in range(1, attempts + 1):
+            if await self.ping():
+                return
+            logger.warning("Waiting for ClickHouse readiness attempt=%s/%s", attempt, attempts)
+            await asyncio.sleep(delay)
+        raise RuntimeError(f"ClickHouse not ready after {attempts} attempts")
 
     async def insert_rows(self, table: str, rows: Iterable[dict[str, Any]]) -> int:
         materialized = list(rows)

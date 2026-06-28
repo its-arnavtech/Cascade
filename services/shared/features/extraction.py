@@ -67,7 +67,8 @@ def extract_feature_windows(events: list[dict[str, Any]], window_seconds: int = 
 
 def build_feature_vector(events: list[dict[str, Any]]) -> dict[str, Any]:
     event_count = len(events)
-    healthy = warning = error = unhealthy = restart_signal = 0
+    healthy = warning = error = unhealthy = 0
+    restart_counts: list[float] = []
     cpus: list[float] = []
     memories: list[float] = []
     latencies: list[float] = []
@@ -91,8 +92,7 @@ def build_feature_vector(events: list[dict[str, Any]]) -> dict[str, Any]:
             healthy += 1
         if status in {"warning", "degraded", "unhealthy", "failed"} or severity in {"warning", "high", "critical", "error"}:
             warning += 1
-        if status in {"unhealthy", "failed", "error"} or severity in {"error", "critical"}:
-            error += 1
+        status_is_error = status in {"unhealthy", "failed", "error"} or severity in {"error", "critical"}
         if status in {"warning", "degraded", "unhealthy", "failed", "error"}:
             unhealthy += 1
         if event.get("experiment_id"):
@@ -111,7 +111,10 @@ def build_feature_vector(events: list[dict[str, Any]]) -> dict[str, Any]:
         request_rates.append(_float(numeric.get("request_rate") or enriched.get("request_rate"), 0.0))
         error_rate_value = _float(numeric.get("error_rate") or enriched.get("error_rate"), 0.0)
         observed_error_rates.append(error_rate_value)
-        if error_rate_value > 0:
+        # Count each event as an error at most once: a single event must not be
+        # double-counted by both its health status/severity and its RED error-rate
+        # metric, otherwise error_count > event_count and error_rate exceeds 1.0.
+        if status_is_error or error_rate_value > 0:
             error += 1
         ready = numeric.get("ready", enriched.get("ready"))
         service_available = numeric.get("service_available", enriched.get("service_available"))
@@ -123,10 +126,13 @@ def build_feature_vector(events: list[dict[str, Any]]) -> dict[str, Any]:
         missing_metric_count += len(enriched.get("missing_metrics") or numeric.get("missing_metrics") or [])
         if any(enriched.get(key) is False or numeric.get(key) is False for key in ("redpanda_healthy", "clickhouse_healthy", "qdrant_healthy")):
             dependency_unhealthy += 1
-        restart_count = _float(numeric.get("restart_count"), _float(enriched.get("restart_count"), 0.0))
-        if restart_count > 0:
-            restart_signal += 1
+        # restart_count is the cumulative kube_pod_container_status_restarts_total
+        # counter, not a per-window event. Collect the raw values and derive the
+        # actual restarts that occurred during this window from the counter delta.
+        restart_counts.append(_float(numeric.get("restart_count"), _float(enriched.get("restart_count"), 0.0)))
 
+    restarts_in_window = max(0.0, max(restart_counts) - min(restart_counts)) if restart_counts else 0.0
+    restart_signal = int(restarts_in_window)
     denominator = max(event_count, 1)
     vector = {
         "event_count": event_count,
@@ -147,8 +153,8 @@ def build_feature_vector(events: list[dict[str, Any]]) -> dict[str, Any]:
         "latency_p95_ms": max(latency_p95s) if latency_p95s else max(latencies) if latencies else 0.0,
         "latency_p99_ms": max(latency_p99s) if latency_p99s else max(latencies) if latencies else 0.0,
         "request_rate": sum(request_rates),
-        "error_rate": max(error / denominator, max(observed_error_rates, default=0.0)),
-        "restart_rate": restart_signal / denominator,
+        "error_rate": min(1.0, max(error / denominator, max(observed_error_rates, default=0.0))),
+        "restart_rate": min(1.0, restarts_in_window / denominator),
         "unhealthy_rate": unhealthy / denominator,
         "readiness_rate": _avg(readiness_values) if readiness_values else 0.0,
         "availability_rate": _avg(availability_values) if availability_values else 0.0,
